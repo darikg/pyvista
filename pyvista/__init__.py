@@ -92,7 +92,7 @@ except Exception as e:
     EXAMPLES_PATH = None
 
 # Send VTK messages to the logging module:
-send_errors_to_logging()
+# send_errors_to_logging()
 
 
 # Set up panel for interactive notebook rendering
