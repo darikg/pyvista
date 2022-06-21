@@ -14,7 +14,7 @@ mypy-extensions
 osmnx==1.1.2
 https://github.com/numpy/numpydoc/archive/main.zip  # need latest
 panel
-param==1.12.0  # due to panel bug
+param==1.12.2  # due to panel bug
 pydata-sphinx-theme
 pypandoc
 pytest-sphinx
