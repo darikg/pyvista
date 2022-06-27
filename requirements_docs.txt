@@ -4,7 +4,7 @@ imageio-ffmpeg
 imageio>=2.5.0
 ipygany
 ipyvtklink
-jupyter_sphinx==0.3.2
+jupyter_sphinx==0.4.0
 jupyterlab>=3.0.12
 lxml
 matplotlib
