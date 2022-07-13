@@ -294,7 +294,7 @@ def point_labels_to_sprites(dataset):
         text = tjs.TextTexture(
             string=label,
             color='green',  # face color
-            size=18,
+            size=72,
             fontFace='Arial',
         )
         material = tjs.SpriteMaterial(
@@ -310,6 +310,7 @@ def point_labels_to_sprites(dataset):
             material=material,
             center=[.5, .5],  # Anchor point; [.5, .5] is the middle, [0, 0] bottom-left
             position=point.tolist(),
+            scale=(.5, .5, .5),
         )
         yield sprite
 
