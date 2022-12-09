@@ -15,7 +15,7 @@ sphinx_gallery
 trimesh
 ipyvtklink>=0.2.1
 panel
-param==1.12.0
+param==1.12.3
 ipygany
 pytest-xdist
 pythreejs
