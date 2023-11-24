@@ -5,6 +5,7 @@ from typing import Optional, Union, Dict, Tuple, TypeVar
 from vtkmodules.vtkRenderingCore import vtkDistanceToCamera
 
 import pyvista
+import numpy as np
 import pyvista.core._vtk_core as _vtk
 from pyvista import AnnotatedIntEnum
 from pyvista.core.errors import (
@@ -51,7 +52,7 @@ class IndexMode(AnnotatedIntEnum):
     VECTOR = (2, 'vector')
 
 
-class InputArray(AnnotatedIntEnum):
+class InputArrayType(AnnotatedIntEnum):
     # From the vtkGlyph3d docs: You can set what arrays to use for the
     # scalars, vectors, normals, and color scalars by using the
     # SetInputArrayToProcess methods in vtkAlgorithm. The first array is
@@ -66,15 +67,79 @@ _T = TypeVar('_T', bound=AnnotatedIntEnum)
 _IntoMode = Union[int, str, _T]
 
 
+DataSource = Union[_vtk.vtkDataSet, _vtk.vtkAlgorithmOutput]
+
+
 class Glyph3D(_vtk.vtkGlyph3D):
+    """Copy oriented and scaled glyph geometry to every input point.
+
+    Glyph3D is a filter that copies a geometric representation (called a glyph) to every point in the input dataset.
+    The glyph is defined with polygonal data from a source filter input. The glyph may be oriented along the input
+    vectors or normals, and it may be scaled according to scalar data or vector magnitude. More than one glyph may be
+    used by creating a table of source objects, each defining a different glyph. If a table of glyphs is defined,
+    then the table can be indexed into by using either scalar value or vector magnitude.
+
+    To use this object you'll have to provide an input dataset and a source to define the glyph. Then decide whether
+    you want to scale the glyph and how to scale the glyph (using scalar value or vector magnitude). Next decide
+    whether you want to orient the glyph, and whether to use the vector data or normal data to orient it. Finally,
+    decide whether to use a table of glyphs, or just a single glyph. If you use a table of glyphs, you'll have to
+    decide whether to index into it with scalar value or with vector magnitude.
+
+    Parameters
+    ----------
+    input_data : DataSource
+        The input data whose points the glyph geometry is copied to.
+
+    glyph : DataSource | sequence[DataSource] | dict[int, DataSource], optional
+        The glyph data that is copied to every point in `input_data`. A table
+        of glyph geometries can be supplied as a dict mapping values to glyph geometries.
+
+    scaling : bool, optional
+        Turn on/off scaling of source geometry.
+
+    scale_factor : float, optional
+        Constant scaling factor.
+
+    scale_mode : ScaleMode | str | int, optional
+        How to control scaling of the glyph geometry.
+        Allowable values are 'scalar', 'vector', 'vector_components', or 'off'.
+
+    range_: Tuple[float, float], optional
+        Range to map scalar values into if a table of glyphs is supplied.
+
+    clamping : bool, optional
+        Turn on/off clamping of "scalar" values to `range`.
+
+    index_mode: IndexMode | str | int, optional
+        Index into table of sources by scalar, by vector/normal magnitude, or no indexing.
+        Allowable values are 'off', 'scalar', or 'vector'. If indexing is turned off, then
+        the first source glyph in the table of glyphs is used.
+
+    orient : bool, optional
+        Turn on/off orienting of input geometry along vector/normal.
+
+    vector_mode : VectorMode | str |int, optional
+        Specify how to use vectors.
+        Allowable values are 'vector', 'normal', 'rotation_off', 'follow_camera_direction'.
+
+    color_mode : ColorMode | str | int, optional
+        Either color by scale, scalar or by vector/normal magnitude.
+        Allowable values are 'scale', 'scalar', 'vector'.
+
+    scalars_name, vectors_name, normals_name, color_scalars_name : str | optional
+        The name of the point data arrays in the input data source to use for the
+        corresponding operations.
+    """
+
     def __init__(
             self,
             input_data: _Input,
             glyph: Optional[_Glyph],
             scaling: Optional[bool] = None,
-            scale_mode: Optional[_IntoMode[ScaleMode]]= None,
+            scale_mode: Optional[_IntoMode[ScaleMode]] = None,
             scale_factor: Optional[float] = None,
-            clamp_range: Optional[_ClampRange] = None,
+            clamping: Optional[bool] = None,
+            range_: Optional[_ClampRange] = None,
             orient: Optional[bool] = None,
             vector_mode: Optional[_IntoMode[VectorMode]] = None,
             color_mode: Optional[_IntoMode[ColorMode]] = None,
@@ -112,90 +177,137 @@ class Glyph3D(_vtk.vtkGlyph3D):
         if vector_mode is not None:
             self.vector_mode = vector_mode
 
-        if clamp_range is not None:
-            self.clamp_range = clamp_range
+        if clamping is not None:
+            self.clamping = clamping
+
+        if range_ is not None:
+            self.range_ = range_
 
         if index_mode is not None:
             self.index_mode = index_mode
 
         for (i, name) in enumerate((scalars_name, vectors_name, normals_name, color_scalars_name)):
             if name is not None:
-                self.set_input_array_name(i, name)
+                self.set_input_array_to_process(i, name)
 
-    def set_input_array_name(self, typ: _IntoMode[InputArray], name: str) -> None:
-        self.SetInputArrayToProcess(InputArray.from_any(typ).value, 0, 0, FieldAssociation.POINT.value, name)
+    def set_input_array_to_process(self, typ: _IntoMode[InputArrayType], name: str) -> None:
+        """Set the name of a point data array in the input datasource to process.
+        
+        Parameters
+        ----------
+        typ : InputArrayType | str | int
+            The type of input array to specify. 
+            Allowable values are 'scalars', 'vectors', 'normals', or 'color_scalars'.
+            
+        name : str
+            The name of the array.
+        """
+        self.SetInputArrayToProcess(InputArrayType.from_any(typ).value, 0, 0, FieldAssociation.POINT.value, name)
 
     @property
     def scaling(self) -> bool:
+        """Turn on/off scaling of source geometry."""
         return bool(self.GetScaling())
 
     @scaling.setter
     def scaling(self, state: bool):
+        """Turn on/off scaling of source geometry."""
         self.SetScaling(state)
 
     @property
     def scale_factor(self) -> float:
+        """Constant scaling factor."""
         return self.GetScaleFactor()
 
     @scale_factor.setter
     def scale_factor(self, factor: float):
+        """Constant scaling factor."""
         self.SetScaleFactor(factor)
 
     @property
-    def clamp_range(self) -> Optional[_ClampRange]:
-        return self.GetRange() if self.GetClamping() else None
+    def clamping(self) -> bool:
+        """Turn on/off clamping of "scalar" values to `range`."""
+        return bool(self.GetClamping())
 
-    @clamp_range.setter
-    def clamp_range(self, rng: Optional[_ClampRange]):
-        if rng is not None:
-            self.SetRange(*rng)
-            self.SetClamping(True)
-        else:
-            self.SetClamping(False)
+    @clamping.setter
+    def clamping(self, state: bool):
+        """Turn on/off clamping of "scalar" values to `range`."""
+        self.SetClamping(state)
 
     @property
-    def scale_mode(self) -> ScaleMode:
+    def range_(self) -> Tuple[float, float]:
+        """Range to map scalar values into if a table of glyphs is supplied."""
+        return self.GetRange()
+
+    @range_.setter
+    def range_(self, rng: Tuple[float, float]):
+        """Range to map scalar values into if a table of glyphs is supplied."""
+        self.SetRange(*rng)
+
+    @property
+    def scale_mode(self) -> ScaleMode:  # numpydoc ignore=RT01
+        """How to control scaling of the glyph geometry."""
         return ScaleMode(self.GetScaleMode())
 
     @scale_mode.setter
     def scale_mode(self, mode: _IntoMode[ScaleMode]):
+        """How to control scaling of the glyph geometry."""
         self.SetScaleMode(ScaleMode.from_any(mode).value)
 
     @property
     def orient(self) -> bool:
+        """Turn on/off orienting of input geometry along vector/normal."""
         return bool(self.GetOrient())
 
     @orient.setter
     def orient(self, state: bool):
+        """Turn on/off orienting of input geometry along vector/normal."""
         self.SetOrient(state)
 
-    def set_glyph(self, glyphs: _Glyph):
-        if isinstance(glyphs, collections.abc.Mapping):
-            for index, glyph in glyphs.items():
+    def set_glyph(self, geom: _Glyph) -> None:
+        """Set the glyph data that is copied to every point in `input_data`.
+        
+        A table of glyph geometries can be supplied as a dict mapping values to glyph geometries,
+        or a sequence of geometries where the indices are assumed to be range(len(geom)).
+        
+        Parameters
+        ----------
+        geom: DataSource | sequence[DataSource] | dict[int, DataSource]
+        
+        """
+        if isinstance(geom, (np.ndarray, collections.abc.Sequence)):
+            geom = dict(enumerate(geom))
+
+        if isinstance(geom, collections.abc.Mapping):
+            for index, glyph in geom.items():
                 if isinstance(glyph, _vtk.vtkDataSet):
                     self.SetSourceData(index, glyph)
                 else:
                     self.SetSourceConnection(index, glyph)
         else:
-            if isinstance(glyphs, _vtk.vtkDataSet):
-                self.SetSourceData(glyphs)
+            if isinstance(geom, _vtk.vtkDataSet):
+                self.SetSourceData(geom)
             else:
-                self.SetSourceConnection(glyphs)
+                self.SetSourceConnection(geom)
 
     @property
-    def index_mode(self) -> IndexMode:
+    def index_mode(self) -> IndexMode:  # numpydoc ignore=RT01
+        """Index into table of sources by scalar, by vector/normal magnitude, or no indexing."""
         return IndexMode(self.GetIndexMode())
 
     @index_mode.setter
-    def index_mode(self, mode: _IntoMode[IndexMode]):
+    def index_mode(self, mode: _IntoMode[IndexMode]):  # numpydoc ignore=RT01
+        """Index into table of sources by scalar, by vector/normal magnitude, or no indexing."""
         self.SetIndexMode(IndexMode.from_any(mode).value)
 
     @property
     def color_mode(self) -> ColorMode:
+        """Either color by scale, scalar or by vector/normal magnitude."""
         return ColorMode(self.GetColorMode())
 
     @color_mode.setter
     def color_mode(self, mode: _IntoMode[ColorMode]):
+        """Either color by scale, scalar or by vector/normal magnitude."""
         self.SetColorMode(ColorMode.from_any(mode).value)
 
     @classmethod
@@ -208,10 +320,12 @@ class Glyph3D(_vtk.vtkGlyph3D):
             glyph: Optional[_Glyph] = None,
             tolerance: Optional[float] = None,
             absolute: bool = False,
-            clamp_range: Optional[_ClampRange] = False,
+            range_: Optional[_ClampRange] = False,
             progress_bar=False,
             **kwargs,
     ):
+        """Construct a Glyph3D algorithm for a source `pyvista.DataSet`."""
+
         if isinstance(scale, str):
             dataset.set_active_scalars(scale, preference='cell')
             scale = True
@@ -323,7 +437,7 @@ class Glyph3D(_vtk.vtkGlyph3D):
             scaling=scale,
             scale_mode=scale_mode,
             scale_factor=scale_factor,
-            clamp_range=clamp_range,
+            range_=range_,
             orient=orient,
             index_mode=index_mode,
             **kwargs

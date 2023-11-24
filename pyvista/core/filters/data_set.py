@@ -1,6 +1,6 @@
 """Filters module with a class of common filters that can be applied to any vtkDataSet."""
 import collections.abc
-from typing import Literal, Optional, Sequence, Union
+from typing import Literal, Optional, Sequence, Union, cast
 import warnings
 
 import matplotlib.pyplot as plt
@@ -2243,13 +2243,12 @@ class DataSetFilters:
         examples using this filter.
 
         """
-        dataset = self
-
         # Make glyphing geometry if necessary
         if geom is None:
             arrow = _vtk.vtkArrowSource()
             _update_alg(arrow, progress_bar, 'Making Arrow')
             geom = arrow.GetOutput()
+
         # Check if a table of geometries was passed
         if isinstance(geom, (np.ndarray, collections.abc.Sequence)):
             if indices is None:
@@ -2262,112 +2261,23 @@ class DataSetFilters:
                 )
             if len(indices) != len(geom) and len(geom) != 1:
                 raise ValueError('The sequence "indices" must be the same length ' 'as "geom".')
-        else:
-            geom = [geom]
+            geom = dict(zip(indices, geom))
+
         if any(not isinstance(subgeom, _vtk.vtkPolyData) for subgeom in geom):
             raise TypeError('Only PolyData objects can be used as glyphs.')
-        # Run the algorithm
-        alg = _vtk.vtkGlyph3D()
-        if len(geom) == 1:
-            # use a single glyph, ignore indices
-            alg.SetSourceData(geom[0])
-        else:
-            for index, subgeom in zip(indices, geom):
-                alg.SetSourceData(index, subgeom)
-            if dataset.active_scalars is not None:
-                if dataset.active_scalars.ndim > 1:
-                    alg.SetIndexModeToVector()
-                else:
-                    alg.SetIndexModeToScalar()
-            else:
-                alg.SetIndexModeToOff()
 
-        if isinstance(scale, str):
-            dataset.set_active_scalars(scale, preference='cell')
-            scale = True
-        elif isinstance(scale, bool) and scale:
-            try:
-                set_default_active_scalars(self)
-            except MissingDataError:
-                warnings.warn("No data to use for scale. scale will be set to False.")
-                scale = False
-            except AmbiguousDataError as err:
-                warnings.warn(f"{err}\nIt is unclear which one to use. scale will be set to False.")
-                scale = False
-
-        if scale:
-            if dataset.active_scalars is not None:
-                if dataset.active_scalars.ndim > 1:
-                    alg.SetScaleModeToScaleByVector()
-                else:
-                    alg.SetScaleModeToScaleByScalar()
-        else:
-            alg.SetScaleModeToDataScalingOff()
-
-        if isinstance(orient, str):
-            if scale and dataset.active_scalars_info.association == FieldAssociation.CELL:
-                prefer = 'cell'
-            else:
-                prefer = 'point'
-            dataset.set_active_vectors(orient, preference=prefer)
-            orient = True
-
-        if orient:
-            try:
-                pyvista.set_default_active_vectors(dataset)
-            except MissingDataError:
-                warnings.warn("No vector-like data to use for orient. orient will be set to False.")
-                orient = False
-            except AmbiguousDataError as err:
-                warnings.warn(
-                    f"{err}\nIt is unclear which one to use. orient will be set to False."
-                )
-                orient = False
-
-        if scale and orient:
-            if dataset.active_vectors_info.association != dataset.active_scalars_info.association:
-                raise ValueError("Both ``scale`` and ``orient`` must use point data or cell data.")
-
-        source_data = dataset
-        set_actives_on_source_data = False
-
-        if (scale and dataset.active_scalars_info.association == FieldAssociation.CELL) or (
-            orient and dataset.active_vectors_info.association == FieldAssociation.CELL
-        ):
-            source_data = dataset.cell_centers()
-            set_actives_on_source_data = True
-
-        # Clean the points before glyphing
-        if tolerance is not None:
-            small = pyvista.PolyData(source_data.points)
-            small.point_data.update(source_data.point_data)
-            source_data = small.clean(
-                point_merging=True,
-                merge_tol=tolerance,
-                lines_to_points=False,
-                polys_to_lines=False,
-                strips_to_polys=False,
-                inplace=False,
-                absolute=absolute,
-                progress_bar=progress_bar,
-            )
-            set_actives_on_source_data = True
-
-        # upstream operations (cell to point conversion, point merging) may have unset the correct active
-        # scalars/vectors, so set them again
-        if set_actives_on_source_data:
-            if scale:
-                source_data.set_active_scalars(dataset.active_scalars_name, preference='point')
-            if orient:
-                source_data.set_active_vectors(dataset.active_vectors_name, preference='point')
-
-        if rng is not None:
-            alg.SetRange(rng)
-        alg.SetOrient(orient)
-        alg.SetInputData(source_data)
-        alg.SetVectorModeToUseVector()
-        alg.SetScaleFactor(factor)
-        alg.SetClamping(clamping)
+        from glyph_wip import Glyph3D
+        alg = Glyph3D.for_dataset(
+            dataset=cast(self, _vtk.vtkDataSet),
+            glyph=geom,
+            scale=scale,
+            orient=orient,
+            scale_factor=factor,
+            tolerance=tolerance,
+            absolute=absolute,
+            range_=rng,
+            progress_bar=progress_bar,
+        )
         _update_alg(alg, progress_bar, 'Computing Glyphs')
         return _get_output(alg)
 
