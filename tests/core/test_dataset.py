@@ -657,6 +657,16 @@ def test_rename_array_point(grid):
     assert new_name == grid.active_scalars_name
 
 
+def test_rename_array_point_vtk_array():
+    # Regression test for issue # 5239
+    mesh = pv.Sphere().compute_implicit_distance(pv.Plane())
+    orig = mesh.point_data['implicit_distance'].copy()
+    mesh.rename_array('implicit_distance', 'implicit_distance2', preference='point')
+    renamed = mesh.point_data['implicit_distance2']
+    print(renamed.V)
+    assert np.array_equal(orig, renamed)
+
+
 def test_rename_array_cell(grid):
     cell_keys = list(grid.cell_data.keys())
     old_name = cell_keys[0]
