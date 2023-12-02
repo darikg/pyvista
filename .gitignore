@@ -98,3 +98,4 @@ venv/
 
 # VSCode
 .vscode/
+/doc2/_build/
