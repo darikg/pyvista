@@ -97,6 +97,7 @@ class IVar:
         name, typ = self.vtkname, self.typ
 
         if self.is_annotated_int_enum:
+            # Convert to/from strings by default
             def fget(alg) -> str:
                 return typ(getattr(alg, f'Get{name}')()).annotation
 
