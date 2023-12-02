@@ -124,7 +124,8 @@ class IVar:
             raise NotImplementedError(f"Can't construct IVar from {obj}")
 
     def numpydoc_name(self, optional=True) -> str:
-        out = f'{self.pvname} : {self.typestr}'
+        typestr = self.typestr.replace('typing.', '')
+        out = self.pvname + ' : ' + typestr
         if optional:
             out += ', optional'
         return out
@@ -284,6 +285,9 @@ class Glyph3D(_vtk.vtkGlyph3D):
         ----------
         glyph : DataSource, Sequence[DataSource], Dict[int, DataSource], optional
             The glyph geometry to be copied to each point of the input datasource.
+
+        scalars_name, vectors_name, normals_name, color_scalars_name : str, optional
+            The name of the point data arrays in the input data source to use for the corresponding operations.
         """
         if glyph is not None:
             self.set_glyph(glyph)
