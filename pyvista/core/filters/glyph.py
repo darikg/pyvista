@@ -1,22 +1,20 @@
 import collections.abc
-import inspect
-from typing import Optional, Union, Dict, Tuple, TypeVar, Any, List, Type, Callable
+from typing import Optional, Union, Dict, Tuple
 
 import numpy as np
-from numpydoc import docscrape
 from vtkmodules.vtkRenderingCore import vtkDistanceToCamera
 
 import pyvista.core._vtk_core as _vtk
 from pyvista import AnnotatedIntEnum
+from pyvista.core.filters.alg import _Input, IVar, FilterWrapper, FilterBase
 from pyvista.core.utilities.arrays import (
     FieldAssociation,
 )
 
-_ClampRange = Tuple[float, float]
-_Input = Union[_vtk.vtkDataSet, _vtk.vtkAlgorithmOutput]
-_Glyph = Union[_Input, Dict[int, _Input]]
+# _Glyph = Union[_Input, Dict[int, _Input]]
+_Glyph = _Input
 
-# Advantages
+# Glyph Advantages
 # -- Allow algorithm inputs as well as datasets
 # -- Set input variable names without setting active fields on the source dataset
 
@@ -58,205 +56,10 @@ class _InputArrayType(AnnotatedIntEnum):
     COLOR_SCALARS = (3, 'color_scalars')
 
 
-_T_Enum = TypeVar('_T_Enum', bound=AnnotatedIntEnum)
-_IntoMode = Union[int, str, _T_Enum]
-_T_Alg = TypeVar('_T_Alg', bound=_vtk.vtkAlgorithm)
-DataSource = Union[_vtk.vtkDataSet, _vtk.vtkAlgorithmOutput]
+# _IntoMode = Union[int, str, _T_Enum]
 
 
-def snake_to_camel_case(name: str) -> str:
-    return ''.join(word.title() for word in name.split('_'))
-
-
-class IVar:
-    def __init__(
-            self, pvname: str, typ: Any, desc: Optional[Union[str, List[str]]] = None, vtkname: Optional[str] = None):
-        self.pvname = pvname
-        self.vtkname = vtkname or snake_to_camel_case(pvname)
-        self.typ = typ
-        self.is_annotated_int_enum = False
-        if isinstance(typ, type):
-            if issubclass(typ, AnnotatedIntEnum):
-                self.is_annotated_int_enum = True
-                self.typestr = 'str'
-            else:
-                self.typestr = typ.__name__
-        elif isinstance(typ, tuple):  # e.g. (float, float)
-            self.typestr = f"({', '.join(str(el.__name__) for el in typ)})"
-        else:
-            self.typestr = str(typ)
-        self.desc = desc
-
-    def property_desc(self):
-        if isinstance(self.desc, str):
-            return self.desc
-        else:
-            return '\n'.join(self.desc)
-
-    def install(self, cls: _T_Alg):
-        name, typ = self.vtkname, self.typ
-
-        if self.is_annotated_int_enum:
-            # Convert to/from strings by default
-            def fget(alg) -> str:
-                return typ(getattr(alg, f'Get{name}')()).annotation
-
-            def fset(alg, val: str):
-                getattr(alg, f'Set{name}')(typ.from_str(val).value)
-        else:
-            def fget(alg):
-                return getattr(alg, f'Get{name}')()
-
-            def fset(alg, val):
-                getattr(alg, f'Set{name}')(val)
-
-            _set_in_out_types(fget, out_type=self.typestr)
-            _set_in_out_types(fset, in_type=self.typestr)
-
-        setattr(cls, self.pvname, property(fget, fset, doc=self.property_desc()))
-
-    @classmethod
-    def from_any(cls, alg: _T_Alg, obj: Any):
-        if isinstance(obj, IVar):
-            return obj
-        elif isinstance(obj, tuple):
-            return IVar(*obj)
-        else:
-            raise NotImplementedError(f"Can't construct IVar from {obj}")
-
-    def numpydoc_name(self, optional=True) -> str:
-        typestr = self.typestr.replace('typing.', '')
-        out = self.pvname + ' : ' + typestr
-        if optional:
-            out += ', optional'
-        return out
-
-    def numpydoc_desc(self) -> List[str]:
-        if isinstance(self.desc, list):
-            out = self.desc
-        else:
-            out = [self.desc]
-
-        if self.is_annotated_int_enum:
-            allowable = ', '.join(f"'{v.annotation.lower()}'" for v in self.typ)
-            out.append(f"Allowable values are {allowable}.")
-
-        return out
-
-
-_SENTINEL = object()
-
-
-class FilterDecorator:
-    def __init__(self, ivars: Optional[List] = None):
-        self._ivars = ivars
-
-    def _install_ivars(self, cls: Type[_T_Alg]) -> List[IVar]:
-        """Add properties to the filter class converting from {Get/Set}Property to .property"""
-        ivars = []
-        for spec in self._ivars:
-            ivar = IVar.from_any(cls, spec)
-            ivar.install(cls)
-            ivars.append(ivar)
-        return ivars
-
-    def _install_init(self, cls: _T_Alg, ivars: List[IVar]):
-        """Add the default __init__ to the filter class"""
-        ivar_names = frozenset(iv.pvname for iv in ivars)
-        cls.__doc__ = cls.__doc__ or cls.__name__
-        cls.__doc__ += """            
-            Parameters
-            ----------
-            input_data: DataSource, optional
-                The input mesh to which the glyph geometry is copied to each point.
-            """
-
-        def __init__(alg: _T_Alg, input_data: Optional[_Input] = None, **kwargs):
-            super(cls, alg).__init__()
-
-            if isinstance(input_data, _vtk.vtkDataSet):
-                alg.SetInputData(input_data)
-            else:
-                alg.SetInputConnection(input_data)
-
-            for name in ivar_names:
-                if (val := kwargs.pop(name, _SENTINEL)) is not _SENTINEL:
-                    setattr(alg, name, val)
-
-            if hasattr(alg, '__post_init__'):
-                alg.__post_init__(**kwargs)
-
-        # Update the __init__ signature
-        sig = inspect.signature(__init__)
-        sig_params = [param for (name, param) in sig.parameters.items() if name != 'kwargs']
-        sig_params.extend(
-            inspect.Parameter(
-                name=iv.pvname,
-                annotation=f'Optional[{iv.typestr}]',
-                default=None,
-                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            )
-            for iv in ivars
-        )
-
-        # Update the docstr
-        docstr = docscrape.NumpyDocString(cls.__doc__)
-        docstr['Parameters'].extend(
-            docscrape.Parameter(name=iv.numpydoc_name(optional=True), type='', desc=iv.numpydoc_desc())
-            for iv in ivars
-        )
-
-        if hasattr(cls, '__post_init__'):
-            # Merge signature params and docstr
-            sig_params.extend(
-                param for (name, param) in inspect.signature(cls.__post_init__).parameters.items()
-                if name != 'self'
-            )
-            if cls.__post_init__.__doc__:
-                for (section, contents) in docscrape.FunctionDoc(cls.__post_init__).items():
-                    if section == 'index':
-                        continue  # docstr['index'].update(contents)?
-                    docstr[section] += contents
-
-        __init__.__signature__ = sig.replace(parameters=sig_params)
-        cls.__doc__ = str(docstr)
-        cls.__init__ = __init__
-
-    def __call__(self, cls: Type[_T_Alg]) -> _T_Alg:
-        ivars = self._install_ivars(cls)
-        self._install_init(cls, ivars)
-        return cls
-
-
-def _set_in_out_types(fn: Callable, in_type: Optional[str] = None, out_type: Optional[str] = None):
-    sig = inspect.signature(fn)
-    if in_type:
-        params = list(sig.parameters.values())
-        assert len(params) == 2  # self, val
-        params = [params[0], params[1].replace(annotation=in_type)]
-        sig = sig.replace(parameters=params)
-    if out_type:
-        sig = sig.replace(return_annotation=out_type)
-    fn.__signature__ = sig
-
-
-@FilterDecorator(
-    ivars=[
-        ('scaling', bool, 'Turn on/off scaling of source geometry.'),
-        ('scale_factor', float, 'Constant scaling factor.'),
-        ('scale_mode', _ScaleMode, 'How to control scaling of the glyph geometry.'),
-        IVar('range_', Tuple[float, float], vtkname='Range',
-             desc='Range to map scalar values into if a table of glyphs is supplied.'),
-        ('clamping', bool, 'Range to map scalar values into if a table of glyphs is supplied.'),
-        ('index_mode', _IndexMode, [
-            "Index into table of sources by scalar, by vector/normal magnitude, or no indexing.",
-            "If indexing is turned off, then the first source glyph in the table of glyphs is used."]),
-        ('orient', bool, 'Turn on/off orienting of input geometry along vector/normal.'),
-        ('vector_mode', _VectorMode, 'Specify how to use vectors.'),
-        ('color_mode', _ColorMode, 'Either color by scale, scalar or by vector/normal magnitude.'),
-    ]
-)
-class Glyph3D(_vtk.vtkGlyph3D):
+class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
     """Copy oriented and scaled glyph geometry to every input point.
 
     Glyph3D is a filter that copies a geometric representation (called a glyph) to every point in the input dataset.
@@ -272,6 +75,23 @@ class Glyph3D(_vtk.vtkGlyph3D):
     decide whether to index into it with scalar value or with vector magnitude.
 
     """
+    _wrapper = FilterWrapper(
+        superclass=_vtk.vtkGlyph3D,
+        ivars=[
+            ('scaling', bool, 'Turn on/off scaling of source geometry.'),
+            ('scale_factor', float, 'Constant scaling factor.'),
+            ('scale_mode', _ScaleMode, 'How to control scaling of the glyph geometry.'),
+            IVar('range_', Tuple[float, float], vtkname='Range',
+                 desc='Range to map scalar values into if a table of glyphs is supplied.'),
+            ('clamping', bool, 'Range to map scalar values into if a table of glyphs is supplied.'),
+            ('index_mode', _IndexMode, [
+                "Index into table of sources by scalar, by vector/normal magnitude, or no indexing.",
+                "If indexing is turned off, then the first source glyph in the table of glyphs is used."]),
+            ('orient', bool, 'Turn on/off orienting of input geometry along vector/normal.'),
+            ('vector_mode', _VectorMode, 'Specify how to use vectors.'),
+            ('color_mode', _ColorMode, 'Either color by scale, scalar or by vector/normal magnitude.'),
+        ]
+    )
 
     def __post_init__(
             self,
@@ -297,30 +117,34 @@ class Glyph3D(_vtk.vtkGlyph3D):
             if name is not None:
                 self.set_input_array_to_process(i, name)
 
-    def set_input_array_to_process(self, typ: _IntoMode[_InputArrayType], name: str) -> None:
+    def set_input_array_to_process(self, typ: str, name: str) -> None:
         """Set the name of a point data array in the input datasource to process.
-        
+
         Parameters
         ----------
         typ : str
-            The type of input array to specify. 
+            The type of input array to specify.
             Allowable values are 'scalars', 'vectors', 'normals', or 'color_scalars'.
-            
+
         name : str
             The name of the array.
         """
-        self.SetInputArrayToProcess(_InputArrayType.from_any(typ).value, 0, 0, FieldAssociation.POINT.value, name)
+        if isinstance(typ, int):
+            val = typ
+        else:
+            val = _InputArrayType.from_any(typ).value
+        self.SetInputArrayToProcess(val, 0, 0, FieldAssociation.POINT.value, name)
 
     def set_glyph(self, geom: _Glyph) -> None:
         """Set the glyph data that is copied to every point in `input_data`.
-        
+
         A table of glyph geometries can be supplied as a dict mapping values to glyph geometries,
         or a sequence of geometries where the indices are assumed to be range(len(geom)).
-        
+
         Parameters
         ----------
         geom: DataSource | sequence[DataSource] | dict[int, DataSource]
-        
+
         """
         if isinstance(geom, (np.ndarray, collections.abc.Sequence)):
             geom = dict(enumerate(geom))
@@ -338,7 +162,7 @@ class Glyph3D(_vtk.vtkGlyph3D):
                 self.SetSourceConnection(geom)
 
 
-def main():
+def _main():
     import pyvista as pv
     import numpy as np
     sphere = pv.Sphere(radius=3.14)
@@ -376,4 +200,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    _main()
