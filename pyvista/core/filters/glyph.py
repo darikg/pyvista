@@ -6,7 +6,7 @@ from vtkmodules.vtkRenderingCore import vtkDistanceToCamera
 
 import pyvista.core._vtk_core as _vtk
 from pyvista import AnnotatedIntEnum
-from pyvista.core.filters.alg import _Input, IVar, FilterWrapper, FilterBase
+from pyvista.core.filters.alg import _Input, IVar, FilterWrapper, FilterBase, InitArg
 from pyvista.core.utilities.arrays import (
     FieldAssociation,
 )
@@ -77,6 +77,14 @@ class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
     """
     _wrapper = FilterWrapper(
         superclass=_vtk.vtkGlyph3D,
+        init_args=[
+            InitArg(
+                name='input_data',
+                typ=_Input,
+                desc='The input mesh to which the glyph geometry is copied to each point.',
+                fn=FilterBase.set_input,
+            )
+        ],
         ivars=[
             ('scaling', bool, 'Turn on/off scaling of source geometry.'),
             ('scale_factor', float, 'Constant scaling factor.'),
