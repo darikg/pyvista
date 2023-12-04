@@ -1,4 +1,5 @@
 import collections.abc
+from enum import IntEnum
 from typing import Optional, Union, Dict, Tuple
 
 import numpy as np
@@ -17,46 +18,8 @@ _Glyph = _Input
 # Glyph Advantages
 # -- Allow algorithm inputs as well as datasets
 # -- Set input variable names without setting active fields on the source dataset
-
-
-class _ScaleMode(AnnotatedIntEnum):
-    SCALAR = (0, 'scalar')
-    VECTOR = (1, 'vector')
-    VECTOR_COMPONENTS = (2, 'vector_components')
-    OFF = (3, 'off')
-
-
-class _ColorMode(AnnotatedIntEnum):
-    SCALE = (0, 'scale')
-    SCALAR = (1, 'scalar')
-    VECTOR = (2, 'vector')
-
-
-class _VectorMode(AnnotatedIntEnum):
-    VECTOR = (0, 'vector')
-    NORMAL = (1, 'normal')
-    ROTATION_OFF = (2, 'rotation_off')
-    FOLLOW_CAMERA_DIRECTION = (3, 'follow_camera_direction')
-
-
-class _IndexMode(AnnotatedIntEnum):
-    OFF = (0, 'off')
-    SCALAR = (1, 'scalar')
-    VECTOR = (2, 'vector')
-
-
-class _InputArrayType(AnnotatedIntEnum):
-    # From the vtkGlyph3d docs: You can set what arrays to use for the
-    # scalars, vectors, normals, and color scalars by using the
-    # SetInputArrayToProcess methods in vtkAlgorithm. The first array is
-    # scalars, the next vectors, the next normals and finally color scalars.
-    SCALARS = (0, 'scalars')
-    VECTORS = (1, 'vectors')
-    NORMALS = (2, 'normals')
-    COLOR_SCALARS = (3, 'color_scalars')
-
-
 # _IntoMode = Union[int, str, _T_Enum]
+# Dispatch glyph and input array names uniformly
 
 
 class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
@@ -77,27 +40,23 @@ class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
     """
     _wrapper = FilterWrapper(
         superclass=_vtk.vtkGlyph3D,
-        init_args=[
-            InitArg(
-                name='input_data',
-                typ=_Input,
-                desc='The input mesh to which the glyph geometry is copied to each point.',
-                fn=FilterBase.set_input,
-            )
-        ],
+        input_data_desc='The input mesh to which the glyph geometry is copied to each point.',
         ivars=[
             ('scaling', bool, 'Turn on/off scaling of source geometry.'),
             ('scale_factor', float, 'Constant scaling factor.'),
-            ('scale_mode', _ScaleMode, 'How to control scaling of the glyph geometry.'),
+            ('scale_mode', ('scalar', 'vector', 'vector_components', 'off'),
+             'How to control scaling of the glyph geometry.'),
             IVar('range_', Tuple[float, float], vtkname='Range',
                  desc='Range to map scalar values into if a table of glyphs is supplied.'),
             ('clamping', bool, 'Range to map scalar values into if a table of glyphs is supplied.'),
-            ('index_mode', _IndexMode, [
+            ('index_mode', ('off', 'scalar', 'vector'), [
                 "Index into table of sources by scalar, by vector/normal magnitude, or no indexing.",
                 "If indexing is turned off, then the first source glyph in the table of glyphs is used."]),
             ('orient', bool, 'Turn on/off orienting of input geometry along vector/normal.'),
-            ('vector_mode', _VectorMode, 'Specify how to use vectors.'),
-            ('color_mode', _ColorMode, 'Either color by scale, scalar or by vector/normal magnitude.'),
+            ('vector_mode', ('vector', 'normal', 'rotation_off', 'follow_camera_directrion'),
+             'Specify how to use vectors.'),
+            ('color_mode', ('scale', 'scalar', 'vector'),
+             'Either color by scale, scalar or by vector/normal magnitude.'),
         ]
     )
 
@@ -197,6 +156,13 @@ def _main():
         scalars_name='DistanceToCamera',
         color_scalars_name='direction',
     )
+
+    assert glyph.scaling
+    assert glyph.scale_mode == 'scalar'
+    assert glyph.scale_factor == 0.5
+    assert glyph.orient
+    assert glyph.vector_mode == 'vector'
+    assert glyph.color_mode == 'vector'
 
     pl = pv.Plotter()
     distanceToCamera.SetRenderer(pl.renderer)

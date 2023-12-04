@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import itertools
 from abc import ABC
+from enum import IntEnum
 from typing import Union, TypeVar, Any, Optional, List, Type, Callable, cast, Dict, FrozenSet
 
 from numpydoc import docscrape
@@ -19,7 +20,6 @@ DataSource = Union[_vtk.vtkDataSet, _vtk.vtkAlgorithmOutput]
 
 # TODO clean up build_init
 # Auto generation of enums
-# Need some sort of separation for specifying properties separately from ivars
 #   mesh.algs.glyph(...)
 # Need a newer version of stubgen for --inspect-mode to work
 
@@ -36,12 +36,15 @@ class Argument:
             desc: Optional[Union[str, List[str]]] = None,
     ):
         self.name = name
-        self.typ = typ
-        self.is_annotated_int_enum = False
+        self.is_enum = False
+
+        if isinstance(typ, tuple) and all(isinstance(el, str) for el in typ):
+            # IntEnum defaults to starting at 1
+            typ = IntEnum(f'_{name}_enum', tuple([name, i] for (i, name) in enumerate(typ)))
 
         if isinstance(typ, type):
-            if issubclass(typ, AnnotatedIntEnum):
-                self.is_annotated_int_enum = True
+            if issubclass(typ, (IntEnum, AnnotatedIntEnum)):
+                self.is_enum = True
                 self.typestr = 'str'
             else:
                 self.typestr = typ.__name__
@@ -50,6 +53,7 @@ class Argument:
         else:
             self.typestr = str(typ)
 
+        self.typ = typ
         self.desc = desc
 
     def signature_parameter(self, optional=True, default=None) -> inspect.Parameter:
@@ -69,15 +73,15 @@ class Argument:
         desc = self.desc if isinstance(self.desc, list) else [self.desc]
 
         # TODO this should happen for ivar.install_property description too.
-        if self.is_annotated_int_enum:
-            allowable = ', '.join(f"'{v.annotation.lower()}'" for v in self.typ)
+        if self.is_enum:
+            allowable = ', '.join(f"'{v.name}'" for v in self.typ)
             desc.append(f"Allowable values are {allowable}.")
 
         return docscrape.Parameter(name=name, type='', desc=desc)
 
     @classmethod
     def from_any(cls, alg: _T_Alg, obj: Any):
-        if isinstance(obj, IVar):
+        if isinstance(obj, cls):
             return obj
         elif isinstance(obj, tuple):
             return cls(*obj)
@@ -93,13 +97,15 @@ class IVar(Argument):
     def install_property(self, cls: FilterBase):
         name, typ = self.vtkname, self.typ
 
-        if self.is_annotated_int_enum:
+        if self.is_enum:
             # Convert to/from strings by default
             def fget(alg) -> str:
-                return typ(getattr(alg, f'Get{name}')()).annotation
+                return typ(getattr(alg, f'Get{name}')()).name
 
             def fset(alg, val: str):
-                getattr(alg, f'Set{name}')(typ.from_str(val).value)
+                val = typ[val].value
+                print(f'setting {name} to {val}')
+                getattr(alg, f'Set{name}')(val)
         else:
             def fget(alg):
                 return getattr(alg, f'Get{name}')()
@@ -162,13 +168,24 @@ _FILTERBASE_INIT_SIG = inspect.signature(FilterBase.__init__)
 class FilterWrapper:
     def __init__(
             self,
-            superclass: _T_Alg,
+            superclass: Type[_T_Alg],
+            input_data_desc: Optional[str] = 'Input data',
             init_args: Optional[List] = None,
             ivars: Optional[List] = None,
     ):
         self.superclass = superclass
-        self.init_args = [InitArg.from_any(superclass, arg) for arg in init_args]
-        self.ivars = [IVar.from_any(superclass, iv) for iv in ivars]
+        self.init_args = [InitArg.from_any(superclass, arg) for arg in init_args] if init_args else []
+        self.ivars = [IVar.from_any(superclass, iv) for iv in ivars] if ivars else []
+
+        if input_data_desc is not None:
+            self.init_args = [
+                InitArg(
+                    name='input_data',
+                    typ=_Input,
+                    desc=input_data_desc,
+                    fn=FilterBase.set_input,
+                )
+            ] + self.init_args
 
     def install_init(self, cls: FilterBase):
         """Add the default __init__ to the filter class"""
