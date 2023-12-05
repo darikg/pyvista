@@ -3,8 +3,8 @@ from __future__ import annotations
 import inspect
 import itertools
 from abc import ABC
-from enum import IntEnum
-from typing import Union, TypeVar, Any, Optional, List, Type, Callable, cast, Dict, FrozenSet
+from enum import IntEnum, Enum
+from typing import Union, TypeVar, Any, Optional, List, Type, Callable, cast, Dict, Tuple
 
 from numpydoc import docscrape
 
@@ -28,19 +28,25 @@ def snake_to_camel_case(name: str) -> str:
     return ''.join(word.title() for word in name.split('_'))
 
 
+def make_enum(cls_name, names: Tuple[str, ...]) -> Type[Enum]:
+    # IntEnum defaults to starting at 1
+    return IntEnum(f'_{cls_name}_enum', tuple([name, i] for (i, name) in enumerate(names)))
+
+
 class Argument:
     def __init__(
             self,
             name: str,
             typ: Any,
             desc: Optional[Union[str, List[str]]] = None,
+            superclass: Optional[Type[_T_Alg]] = None,
     ):
+        _ = superclass  # Might be used by subclasses, not here
         self.name = name
         self.is_enum = False
 
         if isinstance(typ, tuple) and all(isinstance(el, str) for el in typ):
-            # IntEnum defaults to starting at 1
-            typ = IntEnum(f'_{name}_enum', tuple([name, i] for (i, name) in enumerate(typ)))
+            typ = make_enum(name, typ)
 
         if isinstance(typ, type):
             if issubclass(typ, (IntEnum, AnnotatedIntEnum)):
@@ -54,7 +60,10 @@ class Argument:
             self.typestr = str(typ)
 
         self.typ = typ
-        self.desc = desc
+        self.desc: List[str] = desc.split('\n') if isinstance(desc, str) else desc
+        if self.is_enum:
+            allowable = ', '.join(f"'{v.name}'" for v in self.typ)
+            self.desc.append(f"Allowable values are {allowable}.")
 
     def signature_parameter(self, optional=True, default=None) -> inspect.Parameter:
         return inspect.Parameter(
@@ -70,14 +79,7 @@ class Argument:
         if optional:
             name += ', optional'
 
-        desc = self.desc if isinstance(self.desc, list) else [self.desc]
-
-        # TODO this should happen for ivar.install_property description too.
-        if self.is_enum:
-            allowable = ', '.join(f"'{v.name}'" for v in self.typ)
-            desc.append(f"Allowable values are {allowable}.")
-
-        return docscrape.Parameter(name=name, type='', desc=desc)
+        return docscrape.Parameter(name=name, type='', desc=self.desc)
 
     @classmethod
     def from_any(cls, alg: _T_Alg, obj: Any):
@@ -94,39 +96,44 @@ class IVar(Argument):
         super().__init__(*args, **kwargs)
         self.vtkname = vtkname or snake_to_camel_case(self.name)
 
-    def install_property(self, cls: FilterBase):
+    def install_property(self, cls: Type[_T_Filt]):
         name, typ = self.vtkname, self.typ
+        get_ivar, set_ivar = getattr(cls, f'Get{name}'), getattr(cls, f'Set{name}')
 
         if self.is_enum:
             # Convert to/from strings by default
             def fget(alg) -> str:
-                return typ(getattr(alg, f'Get{name}')()).name
+                return typ(get_ivar(alg)).name
 
             def fset(alg, val: str):
                 val = typ[val].value
-                print(f'setting {name} to {val}')
-                getattr(alg, f'Set{name}')(val)
+                set_ivar(alg, val)
         else:
             def fget(alg):
-                return getattr(alg, f'Get{name}')()
+                return get_ivar(alg)
 
             def fset(alg, val):
-                getattr(alg, f'Set{name}')(val)
+                set_ivar(alg, val)
 
             _set_in_out_types(fget, out_type=self.typestr)
             _set_in_out_types(fset, in_type=self.typestr)
 
-        doc = self.desc if isinstance(self.desc, str) else '\n'.join(self.desc)
-        setattr(cls, self.name, property(fget, fset, doc=doc))
+        setattr(cls, self.name, property(fget, fset, doc='\n'.join(self.desc)))
 
 
 _SENTINEL = object()
 
 
 class InitArg(Argument):
-    def __init__(self, *args, fn: Callable, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fn = fn
+    def __init__(
+            self,
+            name: str,
+            typ: _T,
+            desc: Optional[Union[str, List[str]]] = None,
+            fn: Optional[Union[Callable[[_T_Alg, _T], None]], str] = None,
+    ):
+        super().__init__(name=name, typ=typ, desc=desc)
+        self.fn = fn or 'set_' + name
 
 
 class FilterBase(ABC):
@@ -144,12 +151,20 @@ class FilterBase(ABC):
             if (val := kwargs.pop(iv.name, _SENTINEL)) is not _SENTINEL:
                 setattr(self, iv.name, val)
 
-    def __init_subclass__(cls: FilterBase, **kwargs):
-        if cls._wrapper:
-            for iv in cls._wrapper.ivars:
-                iv.install_property(cls)
+    def __init_subclass__(cls, **kwargs):
+        if not cls._wrapper:
+            return
 
-            cls._wrapper.install_init(cls)
+        for iv in cls._wrapper.ivars:
+            iv.install_property(cls)
+
+        for arg in cls._wrapper.init_args:
+            if isinstance(arg.fn, str):
+                # Because the FilterWrapper may have been defined before class methods had been created,
+                # convert from strings to actual functions here
+                arg.fn = getattr(cls, arg.fn)
+
+        cls._wrapper.install_init(cls)
 
     def set_input(self, input_data: _Input) -> None:
         alg = cast(_vtk.vtkAlgorithm, self)
@@ -187,7 +202,7 @@ class FilterWrapper:
                 )
             ] + self.init_args
 
-    def install_init(self, cls: FilterBase):
+    def install_init(self, cls: Type[_T_Filt]):
         """Add the default __init__ to the filter class"""
         cls.__doc__ = cls.__doc__ or cls.__name__
 

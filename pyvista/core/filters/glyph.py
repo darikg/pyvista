@@ -1,13 +1,13 @@
 import collections.abc
 from enum import IntEnum
-from typing import Optional, Union, Dict, Tuple
+from typing import Optional, Union, Dict, Tuple, Sequence
 
 import numpy as np
 from vtkmodules.vtkRenderingCore import vtkDistanceToCamera
 
 import pyvista.core._vtk_core as _vtk
 from pyvista import AnnotatedIntEnum
-from pyvista.core.filters.alg import _Input, IVar, FilterWrapper, FilterBase, InitArg
+from pyvista.core.filters.alg import _Input, IVar, FilterWrapper, FilterBase, InitArg, DataSource
 from pyvista.core.utilities.arrays import (
     FieldAssociation,
 )
@@ -20,6 +20,17 @@ _Glyph = _Input
 # -- Set input variable names without setting active fields on the source dataset
 # _IntoMode = Union[int, str, _T_Enum]
 # Dispatch glyph and input array names uniformly
+
+
+class _InputArrayType(AnnotatedIntEnum):
+    # From the vtkGlyph3d docs: You can set what arrays to use for the
+    # scalars, vectors, normals, and color scalars by using the
+    # SetInputArrayToProcess methods in vtkAlgorithm. The first array is
+    # scalars, the next vectors, the next normals and finally color scalars.
+    SCALARS = (0, 'scalars')
+    VECTORS = (1, 'vectors')
+    NORMALS = (2, 'normals')
+    COLOR_SCALARS = (3, 'color_scalars')
 
 
 class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
@@ -38,9 +49,14 @@ class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
     decide whether to index into it with scalar value or with vector magnitude.
 
     """
+
     _wrapper = FilterWrapper(
         superclass=_vtk.vtkGlyph3D,
         input_data_desc='The input mesh to which the glyph geometry is copied to each point.',
+        init_args=[
+            ('glyph', Optional[Union[DataSource, Sequence[DataSource], Dict[int, DataSource]]],
+             'The glyph geometry to be copied to each point of the input datasource.'),
+        ],
         ivars=[
             ('scaling', bool, 'Turn on/off scaling of source geometry.'),
             ('scale_factor', float, 'Constant scaling factor.'),
@@ -62,7 +78,6 @@ class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
 
     def __post_init__(
             self,
-            glyph: Optional[_Glyph] = None,
             scalars_name: Optional[str] = None,
             vectors_name: Optional[str] = None,
             normals_name: Optional[str] = None,
@@ -71,15 +86,9 @@ class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
         """
         Parameters
         ----------
-        glyph : DataSource, Sequence[DataSource], Dict[int, DataSource], optional
-            The glyph geometry to be copied to each point of the input datasource.
-
         scalars_name, vectors_name, normals_name, color_scalars_name : str, optional
             The name of the point data arrays in the input data source to use for the corresponding operations.
         """
-        if glyph is not None:
-            self.set_glyph(glyph)
-
         for (i, name) in enumerate((scalars_name, vectors_name, normals_name, color_scalars_name)):
             if name is not None:
                 self.set_input_array_to_process(i, name)
@@ -111,6 +120,7 @@ class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
         Parameters
         ----------
         geom: DataSource | sequence[DataSource] | dict[int, DataSource]
+            The glyph geometry to be copied to each point of the input datasource.
 
         """
         if isinstance(geom, (np.ndarray, collections.abc.Sequence)):
