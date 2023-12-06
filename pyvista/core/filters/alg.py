@@ -4,7 +4,7 @@ import inspect
 import itertools
 from abc import ABC
 from enum import IntEnum, Enum
-from typing import Union, TypeVar, Any, Optional, List, Type, Callable, cast, Dict, Tuple
+from typing import Union, TypeVar, Any, Optional, List, Type, Callable, cast, Dict, Tuple, Iterator
 
 from numpydoc import docscrape
 
@@ -22,7 +22,13 @@ DataSource = Union[_vtk.vtkDataSet, _vtk.vtkAlgorithmOutput]
 # Auto generation of enums
 #   mesh.algs.glyph(...)
 # Need a newer version of stubgen for --inspect-mode to work
-
+# Assert all init_args and ivs are unique
+# Don't really need InitArg as distinct from Argument -- only need IVar as a subclass
+#   - Properties have optional getter/setter or custom getter/setter
+#   - So the init_arg fn is not actually a special case
+# Support for autowrapping arrays
+# InitArgs can add parameter docs to set_fn
+#
 
 def snake_to_camel_case(name: str) -> str:
     return ''.join(word.title() for word in name.split('_'))
@@ -33,6 +39,9 @@ def make_enum(cls_name, names: Tuple[str, ...]) -> Type[Enum]:
     return IntEnum(f'_{cls_name}_enum', tuple([name, i] for (i, name) in enumerate(names)))
 
 
+_SENTINEL = object()
+
+
 class Argument:
     def __init__(
             self,
@@ -40,6 +49,7 @@ class Argument:
             typ: Any,
             desc: Optional[Union[str, List[str]]] = None,
             superclass: Optional[Type[_T_Alg]] = None,
+            default=_SENTINEL,
     ):
         _ = superclass  # Might be used by subclasses, not here
         self.name = name
@@ -64,6 +74,8 @@ class Argument:
         if self.is_enum:
             allowable = ', '.join(f"'{v.name}'" for v in self.typ)
             self.desc.append(f"Allowable values are {allowable}.")
+
+        self.default = default
 
     def signature_parameter(self, optional=True, default=None) -> inspect.Parameter:
         return inspect.Parameter(
@@ -92,9 +104,22 @@ class Argument:
 
 
 class IVar(Argument):
-    def __init__(self, *args, vtkname: Optional[str] = None, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+            self,
+            name: str,
+            typ: Any,
+            desc: Optional[Union[str, List[str]]] = None,
+            vtkname: Optional[str] = None,
+            default=_SENTINEL,
+            init: bool = False,
+            setter=_SENTINEL,
+            getter=_SENTINEL,
+    ):
+        super().__init__(name=name, typ=typ, desc=desc, default=default)
         self.vtkname = vtkname or snake_to_camel_case(self.name)
+        self.init = init
+        self.setter = setter  # TODO
+        self.getter = getter
 
     def install_property(self, cls: Type[_T_Filt]):
         name, typ = self.vtkname, self.typ
@@ -119,9 +144,6 @@ class IVar(Argument):
             _set_in_out_types(fset, in_type=self.typestr)
 
         setattr(cls, self.name, property(fget, fset, doc='\n'.join(self.desc)))
-
-
-_SENTINEL = object()
 
 
 class InitArg(Argument):
@@ -202,6 +224,12 @@ class FilterWrapper:
                 )
             ] + self.init_args
 
+    def _iter_init_args(self) -> Iterator[Argument]:
+        yield from self.init_args
+        for iv in self.ivars:
+            if iv.init:
+                yield iv
+
     def install_init(self, cls: Type[_T_Filt]):
         """Add the default __init__ to the filter class"""
         cls.__doc__ = cls.__doc__ or cls.__name__
@@ -219,7 +247,7 @@ class FilterWrapper:
         sig_params = [param for (name, param) in _FILTERBASE_INIT_SIG.parameters.items() if name != 'kwargs']
         doc_params = []
 
-        for arg in itertools.chain(self.init_args, self.ivars):
+        for arg in self._iter_init_args():
             sig_params.append(arg.signature_parameter(optional=True, default=None))
             doc_params.append(arg.numpydoc_parameter(optional=True))
 
