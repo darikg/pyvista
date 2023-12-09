@@ -1,5 +1,4 @@
 import collections.abc
-from enum import IntEnum
 from typing import Optional, Union, Dict, Tuple, Sequence
 
 import numpy as np
@@ -7,19 +6,12 @@ from vtkmodules.vtkRenderingCore import vtkDistanceToCamera
 
 import pyvista.core._vtk_core as _vtk
 from pyvista import AnnotatedIntEnum
-from pyvista.core.filters.alg import _Input, IVar, FilterWrapper, FilterBase, InitArg, DataSource
+from pyvista.core.filters.alg import _Input, IVar, AlgorithmWrapper, AlgorithmBase, DataSource
 from pyvista.core.utilities.arrays import (
     FieldAssociation,
 )
 
-# _Glyph = Union[_Input, Dict[int, _Input]]
-_Glyph = _Input
-
-# Glyph Advantages
-# -- Allow algorithm inputs as well as datasets
-# -- Set input variable names without setting active fields on the source dataset
-# _IntoMode = Union[int, str, _T_Enum]
-# Dispatch glyph and input array names uniformly
+_Glyph = Union[_Input, Dict[int, _Input]]
 
 
 class _InputArrayType(AnnotatedIntEnum):
@@ -33,7 +25,7 @@ class _InputArrayType(AnnotatedIntEnum):
     COLOR_SCALARS = (3, 'color_scalars')
 
 
-class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
+class Glyph3D(_vtk.vtkGlyph3D, AlgorithmBase):
     """Copy oriented and scaled glyph geometry to every input point.
 
     Glyph3D is a filter that copies a geometric representation (called a glyph) to every point in the input dataset.
@@ -50,7 +42,7 @@ class Glyph3D(_vtk.vtkGlyph3D, FilterBase):
 
     """
 
-    _wrapper = FilterWrapper(
+    _wrapper = AlgorithmWrapper(
         superclass=_vtk.vtkGlyph3D,
         input_data_desc='The input mesh to which the glyph geometry is copied to each point.',
         init_args=[
