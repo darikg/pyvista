@@ -1,42 +1,94 @@
 from __future__ import annotations
 
+from typing import TypeVar, Type, Optional, Generic, Callable, cast, Dict, Union
+
 from pyvista.core import _vtk_core as _vtk
-
-from typing import TypeVar, Type, Optional, Generic, Callable, cast, TYPE_CHECKING, Dict, Tuple, Union
-
-from pyvista.core._typing_core import Number, Vector
-
-T_Alg = TypeVar('T_Alg')
+from pyvista.core._typing_core import Number
 
 
-def snake_to_camel_case(name: str) -> str:
+def _snake_to_camel_case(name: str) -> str:
     return ''.join(word.title() for word in name.split('_'))
 
 
-def python_to_vtk_name(name: str) -> str:
+def _python_to_vtk_name(name: str) -> str:
     if name.startswith('n_'):
-        return 'NumberOf' + snake_to_camel_case(name[2:])
+        return 'NumberOf' + _snake_to_camel_case(name[2:])
     else:
-        return snake_to_camel_case(name)
+        return _snake_to_camel_case(name)
 
 
-T_Set = TypeVar('T_Set')
-T_Get = TypeVar('T_Get')
-Getter = Callable[[T_Alg], T_Get]
-Setter = Callable[[T_Alg, T_Set], None]
+_T = TypeVar('_T')
+_T_Vtk = TypeVar('_T_Vtk')
+_T_Set = TypeVar('_T_Set')
+_T_Get = TypeVar('_T_Get')
+_Getter = Callable[[_T_Vtk], _T_Get]
+_Setter = Callable[[_T_Vtk, _T_Set], None]
 
 
 class _SENTINEL:
     pass
 
 
-class IVar(Generic[T_Get, T_Set]):
+class IVar(Generic[_T_Get, _T_Set]):
+    """Property descriptor for python subclasses of VTK classes.
+
+    These provide properties that map to VTK IVars, providing getter and setters, similar to how the python
+    `property` decorator operates. IVars are generic over the types returned by the getter and accepted by the setter.
+
+    Parameters
+    ----------
+    doc: str
+        The description assigned to the property's docstr.
+
+    vtkname: str, optional
+        The name of the corresponding VTK IVar. By default, the 'original_name' in snake-case is converted
+        to 'OriginalName` in camelcase.
+
+    getter: Callable[[VTK_OBJECT], GET_TYPE], optional
+        A function that gets the IVar's value. If not supplied, defaults to `Get{vtkname}`.
+        Supply getter=None to specify that no getter should be provided.
+
+    setter: Callable[[VTK_OBJECT, SET_TYPE], None]], optional
+        A function that sets the IVar's value. If not supplied, defaults to `Set{vtkname}`.
+        Supply setter=None to specify that no setter should be provided.
+
+    Examples
+    --------
+    Add a simple ivar to a subclass of vtkDistanceToCamera.
+        >>> from vtkmodules.vtkRenderingCore import vtkDistanceToCamera
+        >>>
+        >>> class DistanceToCamera1(vtkDistanceToCamera):
+        >>>     screen_size: IVar[float, float] = IVar(
+        >>>         'The desired screen size obtained by scaling glyphs by the distance array.'
+        >>>     )
+        >>>
+        >>> dtc = DistanceToCamera1()
+        >>> dtc.screen_size = 100  # Equivalent to dtc.SetScreenSize(100)
+        >>> dtc.screen_size
+        100
+
+    This is equivalent to the more verbose @property based approach:
+        >>> class DistanceToCamera2(vtkDistanceToCamera):
+        >>>     @property
+        >>>     def screen_size(self) -> float:
+        >>>         '''The desired screen size obtained by scaling glyphs by the distance array.'''
+        >>>         return self.GetScreenSize()
+        >>>
+        >>>     @screen_size.setter
+        >>>     def screen_size(self, val: float):
+        >>>         self.SetScreenSize(val)
+
+    See Also
+    --------
+    BoolIVar, FloatIVar, EnumIvar, and SimpleIVar.
+
+    """
     def __init__(
             self,
             doc: str = '',
             vtkname: Optional[str] = None,
-            getter: Optional[Union[Getter, Type[_SENTINEL]]] = _SENTINEL,
-            setter: Optional[Union[Setter, Type[_SENTINEL]]] = _SENTINEL,
+            getter: Optional[Union[_Getter, Type[_SENTINEL]]] = _SENTINEL,
+            setter: Optional[Union[_Setter, Type[_SENTINEL]]] = _SENTINEL,
     ):
         self.__doc__ = doc
 
@@ -44,18 +96,18 @@ class IVar(Generic[T_Get, T_Set]):
         self._name = ''
         self._vtkname = vtkname
         self._getter = getter
-        self._setter: Optional[Setter] = setter
-        self._cls: Optional[Type[T_Alg]] = None
+        self._setter = setter
+        self._cls: Type[_vtk.vtkAlgorithm] = _vtk.vtkAlgorithm
 
-    def _default_getter(self, cls: Type[T_Alg]) -> Getter:
+    def _default_getter(self, cls: Type[_vtk.vtkAlgorithm]) -> _Getter:
         return getattr(cls, f'Get{self._vtkname}')
 
-    def _default_setter(self, cls: Type[T_Alg]) -> Setter:
+    def _default_setter(self, cls: Type[_vtk.vtkAlgorithm]) -> _Setter:
         return getattr(cls, f'Set{self._vtkname}')
 
-    def __set_name__(self, cls: Type[T_Alg], name: str):
+    def __set_name__(self, cls: Type[_vtk.vtkAlgorithm], name: str):
         self._name = self._name or name
-        self._vtkname = self._vtkname or python_to_vtk_name(self._name)
+        self._vtkname = self._vtkname or _python_to_vtk_name(self._name)
         self._cls = cls
 
         if self._getter is _SENTINEL:
@@ -64,22 +116,27 @@ class IVar(Generic[T_Get, T_Set]):
         if self._setter is _SENTINEL:
             self._setter = self._default_setter(cls)
 
-    def __get__(self, instance: T_Alg, cls: Type[T_Alg]) -> T_Get:
+    def __get__(self, instance: _vtk.vtkAlgorithm, cls: Type[_vtk.vtkAlgorithm]) -> _T_Get:
         if self._getter is None:
             raise TypeError(f"Property {self._name} in class {self._cls.__name__} has no getter")
-        getter = cast(Getter, self._getter)
+        getter = cast(_Getter, self._getter)
         return getter(instance)
 
-    def __set__(self, instance: T_Alg, val: T_Set):
+    def __set__(self, instance: _vtk.vtkAlgorithm, val: _T_Set):
         if self._setter is None:
             raise TypeError(f"Property {self._name} in class {self._cls.__name__} has no setter")
 
-        setter = cast(Setter, self._setter)
+        setter = cast(_Setter, self._setter)
         setter(instance, val)
 
 
-class BoolIVar(IVar[bool, bool]):
-    def _default_getter(self, cls: Type[T_Alg]) -> Getter:
+class SimpleIVar(IVar[_T, _T], Generic[_T]):
+    """IVar whose get and set types are identical."""
+    pass
+
+
+class BoolIVar(SimpleIVar[bool]):
+    def _default_getter(self, cls: Type[_vtk.vtkAlgorithm]) -> _Getter:
         getter = super()._default_getter(cls)
         return lambda instance: bool(getter(instance))  # cast from int to bool
 
@@ -89,62 +146,63 @@ class FloatIVar(IVar[Number, float]):
 
 
 class EnumIVar(IVar[str, str]):
-    def __init__(self, members: Dict[str, int], doc: str, *args, **kwargs):
-        doc += f"\nAllowable values are {', '.join(name for name in members.keys())}."
+    def __init__(self, members: Dict[str, int], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._str_to_int = members
         self._int_to_str = {i: mode for mode, i in members.items()}
+        self.__doc__ += '\n' + self._allowable_values()
 
-    def _default_getter(self, cls: Type[T_Alg]) -> Getter:
+    def _allowable_values(self):
+        names = ', '.join(f"'{name}'" for name in self._str_to_int.keys())
+        return f"Allowable values are {names}."
+
+    def _default_getter(self, cls: Type[_vtk.vtkAlgorithm]) -> _Getter:
         int_getter = super()._default_getter(cls)
 
-        def getter(instance: T_Alg) -> str:
+        def getter(instance: _vtk.vtkAlgorithm) -> str:
             return self._int_to_str[int_getter(instance)]
 
         return getter
 
-    def _default_setter(self, cls: Type[T_Alg]) -> Setter:
+    def _default_setter(self, cls: Type[_vtk.vtkAlgorithm]) -> _Setter:
         int_setter = super()._default_setter(cls)
 
-        def setter(instance: T_Alg, mode: str) -> None:
-            int_setter(instance, self._str_to_int[mode])
+        def setter(instance: _vtk.vtkAlgorithm, mode: str) -> None:
+            try:
+                val = self._str_to_int[mode]
+            except KeyError:
+                raise ValueError(
+                    f"Unrecognized mode '{mode}' for property {self._name} in class {self._cls.__name__}. "
+                    + self._allowable_values()
+                )
+
+            int_setter(instance, val)
 
         return setter
 
 
+def main():
+    from vtkmodules.vtkRenderingCore import vtkDistanceToCamera
+
+    class DistanceToCamera2(vtkDistanceToCamera):
+        @property
+        def screen_size(self) -> float:
+            return self.GetScreenSize()
+
+        @screen_size.setter
+        def screen_size(self, val: float):
+            self.SetScreenSize(val)
+
+        scaling: IVar[bool, bool] = IVar('Whether to scale the distance by the input array to process.')
+
+    dtc = DistanceToCamera1()
+    dtc.scaling = True  # Equivalent to dtc.SetScaling(True)
+
+
 if __name__ == '__main__':
-    class Glyph3D(_vtk.vtkGlyph3D):
-        scaling: BoolIVar = BoolIVar('Turn on/off scaling of source geometry.')
-        scale_factor: FloatIVar = FloatIVar('Constant scaling factor.')
-        scale_mode: EnumIVar = EnumIVar(
-            dict(scalar=0, vector=1, vector_components=2, off=3),
-            'How to control scaling of the glyph geometry.'
-        )
-
-    alg = Glyph3D()
-    alg.scaling = True
-    assert alg.scaling is True
-    alg.scale_mode = 'vector'
-    assert alg.scale_mode == 'vector' and alg.GetScaleMode() == 1
+    main()
 
 
-    class Connectivity(_vtk.vtkConnectivityFilter):
-        scalar_range: IVar[Vector[float], Tuple[float, float]] = IVar(
-            'The scalar range to use to extract cells based on scalar connectivity.')
 
-        extraction_mode: EnumIVar = EnumIVar(
-            dict(point_seeded=1, cell_seeded=2, specifed_regions=3,
-                 largest_region=4, all_regions=5, closest_point_region=6),
-            'Control the extraction of connected surfaces.',
-        )
 
-        closest_point: IVar[Vector[float], Tuple[float, float, float]] = IVar(
-            'The x-y-z point coordinates when extracting the region closest to a specified point.'
-        )
 
-        n_extracted_regions: IVar[int, int] = IVar('The number of connected regions', setter=None)
-
-    alg = Connectivity()
-    alg.scalar_range = (1.0, 3.0)
-    assert alg.GetScalarRange() == alg.scalar_range == (1.0, 3.0)
-    assert alg.n_extracted_regions == 0
