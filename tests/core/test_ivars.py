@@ -60,15 +60,16 @@ class Connectivity(_vtk.vtkConnectivityFilter):
     scalar_range: IVar[Vector, Tuple[float, float]] = IVar(
         'The scalar range to use to extract cells based on scalar connectivity.')
 
-    n_extracted_regions: IVar[int, int] = IVar('The number of connected regions', setter=None)
+    n_extracted_regions: IVar[int, int] = IVar('The number of connected regions', fset=None)
 
-    def _set_seed_list(self, seed_list: Vector):
+    seed_list: IVar[Vector, Tuple[int, ...]] = IVar(
+        'List of point ids/cell ids used to seed regions.', fget=None)
+
+    @seed_list.setter
+    def seed_list(self, seed_list: Vector):
         self.InitializeSeedList()
         for seed in seed_list:
             self.AddSeed(seed)
-
-    seed_list: IVar[Vector, Tuple[int, ...]] = IVar(
-        'List of point ids/cell ids used to seed regions.', getter=None, setter=_set_seed_list)
 
 
 @pytest.fixture
