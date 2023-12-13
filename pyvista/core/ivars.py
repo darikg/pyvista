@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import IntEnum
 from typing import TypeVar, Type, Optional, Generic, Callable, cast, Dict, Union, Any, Tuple
 
 from pyvista.core import _vtk_core as _vtk
@@ -178,6 +179,14 @@ class Glyph3d(_vtk.vtkGlyph3D):
         'Range to map scalar values into if a table of glyphs is supplied.',
         vtkname='Range',
     )
+
+
+class Colors(IntEnum):
+    """Colors enumerator"""
+    NONE = 0
+    RED = 1
+    GREEN = 2
+    BLUE = 3
 
 
 def main():
