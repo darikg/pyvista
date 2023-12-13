@@ -118,7 +118,6 @@ def test_connectivity_type_reflection():
     assert Connectivity.range_.types() == (Vector, Tuple[float, float])
 
 
-
 class BoxClip(_vtk.vtkBoxClipDataSet):
     locator: IVar[vtkIncrementalPointLocator, Optional[vtkIncrementalPointLocator]] = IVar(
         'Specify a spatial locator for merging points.'

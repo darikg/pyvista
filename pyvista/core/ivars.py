@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from abc import abstractmethod
-from enum import IntEnum
-from typing import TypeVar, Type, Optional, Generic, Callable, Dict, Union, Any, Tuple, cast
+from typing import TypeVar, Type, Optional, Generic, Callable, Dict, Any, Tuple
+
 from typing_extensions import Self, get_args
 
 from pyvista.core import _vtk_core as _vtk
@@ -138,12 +137,15 @@ class IVar(Generic[_T_Get, _T_Set]):
             doc=self.__doc__, vtkname=self.vtkname, fget=fget, fset=fset, _name=self.name, _cls=self.cls, **kwargs)
 
     def getter(self, fget: Optional[_Getter]) -> Self:
+        """Function decorator to replace fget."""
         return self.replace(fget=fget, fset=self.fset)
 
     def setter(self, fset: Optional[_Setter]) -> Self:
+        """Function decorator to replace fset."""
         return self.replace(fget=self.fget, fset=fset)
 
     def types(self) -> Optional[Tuple[Type[_T_Get], Type[_T_Set]]]:
+        """Return a tuple of (GET_TYPE, SET_TYPE)."""
         try:
             return get_args(self.__orig_bases__[0])  # type: ignore
         except AttributeError:
@@ -157,6 +159,7 @@ class IVar(Generic[_T_Get, _T_Set]):
 
 class SimpleIVar(IVar[_T, _T], Generic[_T]):
     """IVar whose get and set types are identical."""
+
     def types(self) -> Optional[Tuple[Type[_T], Type[_T]]]:
         try:
             typ = get_args(self.__orig_bases__[0])[0]  # type: ignore
@@ -166,15 +169,18 @@ class SimpleIVar(IVar[_T, _T], Generic[_T]):
 
 
 class BoolIVar(SimpleIVar[bool]):
+    """IVar representing a bool."""
     def _default_fget(self, instance: _T_Vtk) -> bool:
         return bool(super()._default_fget(instance))  # cast from int to bool
 
 
 class FloatIVar(IVar[Number, float]):
+    """IVar representing a float."""
     pass
 
 
 class EnumIVar(IVar[str, str]):
+    """IVar representing an enumeration."""
     def __init__(
             self,
             *args,
@@ -199,19 +205,15 @@ class EnumIVar(IVar[str, str]):
             val: int = self._str_to_int[name]
         except KeyError:
             raise ValueError(
-                f"Unrecognized mode '{name}' for property {self.name} in class {self._cls.__name__}. "
+                f"Unrecognized mode '{name}' for property {self.name} in class {self.cls.__name__}. "
                 + self._allowable_values()
             )
         getattr(instance, f'Set{self.vtkname}')(val)
 
     @staticmethod
-    def from_dict(
-            members: Dict[str, int],
-            doc: str = '',
-            **kwargs,
-    ) -> EnumIVar:
+    def from_dict(members: Dict[str, int], *args, **kwargs) -> EnumIVar:
         out = EnumIVar(
-            doc=doc,
+            *args,
             str_to_int=members,
             int_to_str={i: mode for mode, i in members.items()},
             **kwargs,
