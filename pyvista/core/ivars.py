@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 from enum import IntEnum
-from typing import TypeVar, Type, Optional, Generic, Callable, cast, Dict, Union, Any, Tuple
+from typing import TypeVar, Type, Optional, Generic, Callable, Dict, Union, Any, Tuple, cast
+from typing_extensions import Self, get_args
 
 from pyvista.core import _vtk_core as _vtk
 from pyvista.core._typing_core import Number, Vector
@@ -26,8 +28,10 @@ _Getter = Callable[[_T_Vtk], _T_Get]
 _Setter = Callable[[_T_Vtk, _T_Set], None]
 
 
-class _SENTINEL:
-    pass
+def _sentinel_get(instance: _T_Vtk) -> Any: ...
+
+
+def _sentinel_set(instance: _T_Vtk, val: Any): ...
 
 
 class IVar(Generic[_T_Get, _T_Set]):
@@ -82,54 +86,78 @@ class IVar(Generic[_T_Get, _T_Set]):
     """
     def __init__(
             self,
-            doc: str = '',
+            doc: Optional[str] = None,
             vtkname: Optional[str] = None,
-            fget: Optional[Union[_Getter, Type[_SENTINEL]]] = _SENTINEL,
-            fset: Optional[Union[_Setter, Type[_SENTINEL]]] = _SENTINEL,
+            fget: Optional[_Getter] = _sentinel_get,
+            fset: Optional[_Setter] = _sentinel_set,
+            _name: str = '',
+            _cls: type = object,
     ):
-        self.__doc__ = doc
-        self.fget = self._default_fget if fget is _SENTINEL else fget
-        self.fset = self._default_fset if fset is _SENTINEL else fset
+        self.__doc__ = doc or ''
+        self.fget: Optional[_Getter] = self._default_fget if fget is _sentinel_get else fget
+        self.fset: Optional[_Setter] = self._default_fset if fset is _sentinel_set else fset
 
         # The following properties may be updated in __set_name__
-        self.name = ''
         self.vtkname = vtkname
-        self._cls: Type[_vtk.vtkAlgorithm] = _vtk.vtkAlgorithm
+        self.name = _name
+        self.cls = _cls
 
     def _default_fget(self, instance: _T_Vtk) -> _T_Get:
         return getattr(instance, f'Get{self.vtkname}')()
 
     def _default_fset(self, instance: _T_Vtk, val: _T_Set) -> None:
-        return getattr(instance, f'Set{self.vtkname}')(val)
+        getattr(instance, f'Set{self.vtkname}')(val)
 
     def __set_name__(self, cls: Type[_T_Vtk], name: str):
         self.name = self.name or name
         self.vtkname = self.vtkname or _python_to_vtk_name(self.name)
-        self._cls = cls
+        self.cls = cls
 
-    def __get__(self, instance: _vtk.vtkAlgorithm, cls: Type[_vtk.vtkAlgorithm]) -> _T_Get:
+    def __get__(self, instance: Optional[_T_Vtk], cls: Type[_T_Vtk]) -> _T_Get:
+        if instance is None:  # Class-level __get__
+            return self
+
         if self.fget is None:
-            raise TypeError(f"Property {self.name} in class {self._cls.__name__} has no getter")
+            raise TypeError(f"Property {self.name} in class {self.cls.__name__} has no getter")
         return self.fget(instance)
 
     def __set__(self, instance: _vtk.vtkAlgorithm, val: _T_Set):
         if self.fset is None:
-            raise TypeError(f"Property {self.name} in class {self._cls.__name__} has no setter")
+            raise TypeError(f"Property {self.name} in class {self.cls.__name__} has no setter")
 
         self.fset(instance, val)
 
-    def getter(self: _T, fget: _Getter) -> _T:
-        self.fget = fget
-        return self
+    def replace(self, fget: Optional[_Getter], fset: Optional[_Setter], **kwargs) -> Self:
+        """Return a copy of self with fget or fset replaced."""
+        return type(self)(
+            doc=self.__doc__, vtkname=self.vtkname, fget=fget, fset=fset, _name=self.name, _cls=self.cls, **kwargs)
 
-    def setter(self: _T, fset: _Setter) -> _T:
-        self.fset = fset
-        return self
+    def getter(self, fget: Optional[_Getter]) -> Self:
+        return self.replace(fget=fget, fset=self.fset)
+
+    def setter(self, fset: Optional[_Setter]) -> Self:
+        return self.replace(fget=self.fget, fset=fset)
+
+    def types(self) -> Optional[Tuple[Type[_T_Get], Type[_T_Set]]]:
+        try:
+            return get_args(self.__orig_bases__[0])  # type: ignore
+        except AttributeError:
+            pass
+
+        try:
+            return get_args(self.__orig_class__)  # type: ignore
+        except AttributeError:
+            return None
 
 
 class SimpleIVar(IVar[_T, _T], Generic[_T]):
     """IVar whose get and set types are identical."""
-    pass
+    def types(self) -> Optional[Tuple[Type[_T], Type[_T]]]:
+        try:
+            typ = get_args(self.__orig_bases__[0])[0]  # type: ignore
+            return typ, typ
+        except AttributeError:
+            return None
 
 
 class BoolIVar(SimpleIVar[bool]):
@@ -142,36 +170,59 @@ class FloatIVar(IVar[Number, float]):
 
 
 class EnumIVar(IVar[str, str]):
-    def __init__(self, members: Dict[str, int], *args, **kwargs):
+    def __init__(
+            self,
+            *args,
+            str_to_int: Dict[str, int],
+            int_to_str: Dict[int, str],
+            **kwargs,
+    ):
         super().__init__(*args, **kwargs)
-        self._str_to_int = members
-        self._int_to_str = {i: mode for mode, i in members.items()}
-        self.__doc__ += '\n' + self._allowable_values()
+        self._str_to_int = str_to_int
+        self._int_to_str = int_to_str
 
     def _allowable_values(self):
         names = ', '.join(f"'{name}'" for name in self._str_to_int.keys())
         return f"Allowable values are {names}."
 
-    def _default_fget(self, instance: _T_Vtk) -> _Getter:
-        val = super()._default_fget(instance)
+    def _default_fget(self, instance: _T_Vtk) -> str:
+        val: int = getattr(instance, f'Get{self.vtkname}')()
         return self._int_to_str[val]
 
     def _default_fset(self, instance: _T_Vtk, name: str) -> None:
         try:
-            val = self._str_to_int[name]
+            val: int = self._str_to_int[name]
         except KeyError:
             raise ValueError(
                 f"Unrecognized mode '{name}' for property {self.name} in class {self._cls.__name__}. "
                 + self._allowable_values()
             )
+        getattr(instance, f'Set{self.vtkname}')(val)
 
-        super()._default_fset(instance, val)
+    @staticmethod
+    def from_dict(
+            members: Dict[str, int],
+            doc: str = '',
+            **kwargs,
+    ) -> EnumIVar:
+        out = EnumIVar(
+            doc=doc,
+            str_to_int=members,
+            int_to_str={i: mode for mode, i in members.items()},
+            **kwargs,
+        )
+        out.__doc__ += '\n' + out._allowable_values()
+        return out
+
+    def replace(self, fget: Optional[_Getter], fset: Optional[_Setter], **kwargs) -> Self:
+        """Return a copy of self with fget or fset replaced."""
+        return super().replace(fget=fget, fset=fset, str_to_int=self._str_to_int, int_to_str=self._int_to_str, **kwargs)
 
 
 class Glyph3d(_vtk.vtkGlyph3D):
     scaling: BoolIVar = BoolIVar('Turn on/off scaling of source geometry.')
     scale_factor: FloatIVar = FloatIVar('Constant scaling factor.')
-    scale_mode: EnumIVar = EnumIVar(
+    scale_mode: EnumIVar = EnumIVar.from_dict(
         dict(scalar=0, vector=1, vector_components=2, off=3),
         'How to control scaling of the glyph geometry.'
     )
@@ -179,14 +230,6 @@ class Glyph3d(_vtk.vtkGlyph3D):
         'Range to map scalar values into if a table of glyphs is supplied.',
         vtkname='Range',
     )
-
-
-class Colors(IntEnum):
-    """Colors enumerator"""
-    NONE = 0
-    RED = 1
-    GREEN = 2
-    BLUE = 3
 
 
 def main():

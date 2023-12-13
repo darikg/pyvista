@@ -5,14 +5,14 @@ import pytest
 from vtkmodules.vtkCommonDataModel import vtkIncrementalPointLocator, vtkMergePoints
 
 from pyvista.core import _vtk_core as _vtk
-from pyvista.core._typing_core import Vector
+from pyvista.core._typing_core import Vector, Number
 from pyvista.core.ivars import BoolIVar, FloatIVar, EnumIVar, IVar
 
 
 class Glyph3d(_vtk.vtkGlyph3D):
     scaling: BoolIVar = BoolIVar('Turn on/off scaling of source geometry.')
     scale_factor: FloatIVar = FloatIVar('Constant scaling factor.')
-    scale_mode: EnumIVar = EnumIVar(
+    scale_mode: EnumIVar = EnumIVar.from_dict(
         dict(scalar=0, vector=1, vector_components=2, off=3),
         'How to control scaling of the glyph geometry.'
     )
@@ -54,6 +54,13 @@ def test_enum_ivar_illegal_value(glyph):
 def test_custom_vtkname(glyph):
     glyph.range_ = (3.0, 4.0)
     assert glyph.range_ == glyph.GetRange()
+
+
+def test_glyph_type_reflection():
+    # assert Glyph3d.scaling.types() == (bool, bool)
+    # assert Glyph3d.scale_factor.types() == (Number, float)
+    # assert Glyph3d.scale_mode.types() == (str, str)
+    assert Glyph3d.range_.types() == (Vector, Tuple[float, float])
 
 
 class Connectivity(_vtk.vtkConnectivityFilter):
@@ -102,6 +109,14 @@ def test_ivar_no_setter(connectivity):
     assert connectivity.n_extracted_regions == 0
     with pytest.raises(TypeError):
         connectivity.n_extracted_regions = 8
+
+
+def test_connectivity_type_reflection():
+    # assert Connectivity.scalar_range.types() == (Vector, Tuple[float, float])
+    assert Connectivity.n_extracted_regions.types() == (int, int)
+    assert Connectivity.scale_mode.types() == (str, str)
+    assert Connectivity.range_.types() == (Vector, Tuple[float, float])
+
 
 
 class BoxClip(_vtk.vtkBoxClipDataSet):
