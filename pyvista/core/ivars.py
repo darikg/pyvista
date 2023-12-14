@@ -33,6 +33,17 @@ def _sentinel_get(instance: _T_Vtk) -> Any: ...
 def _sentinel_set(instance: _T_Vtk, val: Any): ...
 
 
+class AFoo:
+    """A foo."""
+
+    def __init__(self):
+        self.x: int = 8
+
+    @property
+    def y(self) -> int:
+        return 3
+
+
 class IVar(Generic[_T_Get, _T_Set]):
     """Property descriptor for python subclasses of VTK classes.
 
@@ -87,17 +98,13 @@ class IVar(Generic[_T_Get, _T_Set]):
             self,
             doc: Optional[str] = None,
             vtkname: Optional[str] = None,
-            fget: Optional[_Getter] = _sentinel_get,
+            fget: Optional[_Getter] = _sentinel_get,  #: :meta hide-value:  # doesn't do anything
             fset: Optional[_Setter] = _sentinel_set,
             _name: str = '',
             _cls: type = object,
     ):
 
-        if doc is not None:
-            self.__doc__ = doc
-        elif self.__doc__ is None:
-            self.__doc__ = ''
-
+        self.__doc__ = doc or ''
         self.fget: Optional[_Getter] = self._default_fget if fget is _sentinel_get else fget
         self.fset: Optional[_Setter] = self._default_fset if fset is _sentinel_set else fset
 
@@ -227,7 +234,9 @@ class EnumIVar(IVar[str, str]):
 
 
 class Glyph3d(_vtk.vtkGlyph3D):
-    scaling: BoolIVar = BoolIVar('Turn on/off scaling of source geometry.')
+    scaling: BoolIVar = BoolIVar()
+    """Turn on/off scaling of source geometry.xxx"""
+    
     scale_factor: FloatIVar = FloatIVar('Constant scaling factor.')
     scale_mode: EnumIVar = EnumIVar.from_dict(
         dict(scalar=0, vector=1, vector_components=2, off=3),
