@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TypeVar, Type, Optional, Generic, Callable, Dict, Any, Tuple, TypeAlias
+import typing
+from typing import TypeVar, Type, Optional, Generic, Callable, Dict, Any, Tuple
 
 from typing_extensions import Self, get_args
 
@@ -23,9 +24,9 @@ _T = TypeVar('_T')
 _T_Vtk = Any
 _T_Set = TypeVar('_T_Set')
 _T_Get = TypeVar('_T_Get')
-_T_Get_Set: TypeAlias = Tuple[Type[_T_Get], Type[_T_Set]]
-_Getter: TypeAlias = Callable[[_T_Vtk], _T_Get]
-_Setter: TypeAlias = Callable[[_T_Vtk, _T_Set], None]
+_T_Get_Set = Tuple[Type[_T_Get], Type[_T_Set]]
+_Getter = Callable[[_T_Vtk], _T_Get]
+_Setter = Callable[[_T_Vtk, _T_Set], None]
 
 
 def _sentinel_get(instance: _T_Vtk) -> Any: ...
