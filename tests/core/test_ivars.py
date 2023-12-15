@@ -57,9 +57,9 @@ def test_custom_vtkname(glyph):
 
 
 def test_glyph_type_reflection():
-    # assert Glyph3d.scaling.types() == (bool, bool)
-    # assert Glyph3d.scale_factor.types() == (Number, float)
-    # assert Glyph3d.scale_mode.types() == (str, str)
+    assert Glyph3d.scaling.types() == (bool, bool)
+    assert Glyph3d.scale_factor.types() == (Number, float)
+    assert Glyph3d.scale_mode.types() == (str, str)
     assert Glyph3d.range_.types() == (Vector, Tuple[float, float])
 
 
@@ -112,10 +112,9 @@ def test_ivar_no_setter(connectivity):
 
 
 def test_connectivity_type_reflection():
-    # assert Connectivity.scalar_range.types() == (Vector, Tuple[float, float])
+    assert Connectivity.scalar_range.types() == (Vector, Tuple[float, float])
     assert Connectivity.n_extracted_regions.types() == (int, int)
-    assert Connectivity.scale_mode.types() == (str, str)
-    assert Connectivity.range_.types() == (Vector, Tuple[float, float])
+    assert Connectivity.seed_list.types() == (Vector, Tuple[int, ...])
 
 
 class BoxClip(_vtk.vtkBoxClipDataSet):
@@ -137,4 +136,6 @@ def test_point_locator_ivar(box_clip):
     assert isinstance(box_clip.locator, _vtk.vtkNonMergingPointLocator)
 
 
+def test_box_clip_type_reflection():
+    assert BoxClip.locator.types() == (vtkIncrementalPointLocator, Optional[vtkIncrementalPointLocator])
 

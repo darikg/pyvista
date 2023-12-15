@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TypeVar, Type, Optional, Generic, Callable, Dict, Any, Tuple
+from typing import TypeVar, Type, Optional, Generic, Callable, Dict, Any, Tuple, TypeAlias
 
 from typing_extensions import Self, get_args
 
@@ -23,8 +23,9 @@ _T = TypeVar('_T')
 _T_Vtk = Any
 _T_Set = TypeVar('_T_Set')
 _T_Get = TypeVar('_T_Get')
-_Getter = Callable[[_T_Vtk], _T_Get]
-_Setter = Callable[[_T_Vtk, _T_Set], None]
+_T_Get_Set: TypeAlias = Tuple[Type[_T_Get], Type[_T_Set]]
+_Getter: TypeAlias = Callable[[_T_Vtk], _T_Get]
+_Setter: TypeAlias = Callable[[_T_Vtk, _T_Set], None]
 
 
 def _sentinel_get(instance: _T_Vtk) -> Any: ...
@@ -155,28 +156,34 @@ class IVar(Generic[_T_Get, _T_Set]):
         """Function decorator to replace fset."""
         return self.replace(fget=self.fget, fset=fset)
 
-    def types(self) -> Optional[Tuple[Type[_T_Get], Type[_T_Set]]]:
+    def _parse_annotation(self, anno) -> _T_Get_Set:
+        get_typ, set_typ = get_args(anno)
+        return get_typ, set_typ
+
+    def types(self) -> Optional[_T_Get_Set]:
         """Return a tuple of (GET_TYPE, SET_TYPE)."""
         try:
-            return get_args(self.__orig_bases__[0])  # type: ignore
-        except AttributeError:
-            pass
+            anno = self.cls.__annotations__[self.name]
+        except KeyError:
+            return None
+
+        if isinstance(anno, str):
+            return None
 
         try:
-            return get_args(self.__orig_class__)  # type: ignore
-        except AttributeError:
+            get_typ, set_typ = get_args(anno)
+        except (TypeError, ValueError):
             return None
+
+        return get_typ, set_typ
 
 
 class SimpleIVar(IVar[_T, _T], Generic[_T]):
     """IVar whose get and set types are identical."""
 
-    def types(self) -> Optional[Tuple[Type[_T], Type[_T]]]:
-        try:
-            typ = get_args(self.__orig_bases__[0])[0]  # type: ignore
-            return typ, typ
-        except AttributeError:
-            return None
+    def _parse_annotation(self, anno) -> _T_Get_Set:
+        typ, = get_args(anno)
+        return typ, typ
 
 
 class BoolIVar(SimpleIVar[bool]):
@@ -184,10 +191,14 @@ class BoolIVar(SimpleIVar[bool]):
     def _default_fget(self, instance: _T_Vtk) -> bool:
         return bool(super()._default_fget(instance))  # cast from int to bool
 
+    def types(self) -> Optional[_T_Get_Set]:
+        return bool, bool
+
 
 class FloatIVar(IVar[Number, float]):
     """IVar representing a float."""
-    pass
+    def types(self) -> Optional[_T_Get_Set]:
+        return Number, float
 
 
 class EnumIVar(IVar[str, str]):
@@ -235,6 +246,9 @@ class EnumIVar(IVar[str, str]):
     def replace(self, fget: Optional[_Getter], fset: Optional[_Setter], **kwargs) -> Self:
         """Return a copy of self with fget or fset replaced."""
         return super().replace(fget=fget, fset=fset, str_to_int=self._str_to_int, int_to_str=self._int_to_str, **kwargs)
+
+    def types(self) -> Optional[_T_Get_Set]:
+        return str, str
 
 
 class Glyph3d(_vtk.vtkGlyph3D):
