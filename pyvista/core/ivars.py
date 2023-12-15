@@ -33,6 +33,10 @@ def _sentinel_get(instance: _T_Vtk) -> Any: ...
 def _sentinel_set(instance: _T_Vtk, val: Any): ...
 
 
+_sentinel_get.__repr__ = lambda _: '<DEFAULT_GETTER>'
+_sentinel_set.__repr__ = lambda _: '<DEFAULT_SETTER>'
+
+
 class AFoo:
     """A foo."""
 
@@ -98,7 +102,7 @@ class IVar(Generic[_T_Get, _T_Set]):
             self,
             doc: Optional[str] = None,
             vtkname: Optional[str] = None,
-            fget: Optional[_Getter] = _sentinel_get,  #: :meta hide-value:  # doesn't do anything
+            fget: Optional[_Getter] = _sentinel_get,
             fset: Optional[_Setter] = _sentinel_set,
             _name: str = '',
             _cls: type = object,
