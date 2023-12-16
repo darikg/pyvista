@@ -51,7 +51,10 @@ class AFoo:
 
 
 class IVar(Generic[_T_Get, _T_Set]):
-    """Property descriptor for python subclasses of VTK classes.
+    """IVar(doc: str = '', vtkname: Optional[str] = None, fget: Callable[[VTK_TYPE], GET_TYPE] = DEFAULT_GETTER,
+    fset: Callable[[INSTANCE, SET_TYPE], None] = DEFAULT_SETTER)
+
+    Property descriptor for python subclasses of VTK classes.
 
     These provide properties that map to VTK IVars, providing getter and setters, similar to how the python
     `property` decorator operates. IVars are generic over the types returned by the getter and accepted by the setter.
@@ -78,18 +81,18 @@ class IVar(Generic[_T_Get, _T_Set]):
     Add a simple ivar to a subclass of vtkDistanceToCamera.
         >>> from vtkmodules.vtkRenderingCore import vtkDistanceToCamera
         >>>
-        >>> class DistanceToCamera1(vtkDistanceToCamera):
+        >>> class DistanceToCamera(vtkDistanceToCamera):
         >>>     screen_size: IVar[float, float] = IVar(
         >>>         'The desired screen size obtained by scaling glyphs by the distance array.'
         >>>     )
         >>>
-        >>> dtc = DistanceToCamera1()
+        >>> dtc = DistanceToCamera()
         >>> dtc.screen_size = 100  # Equivalent to dtc.SetScreenSize(100)
         >>> dtc.screen_size
         100
-
-    This is equivalent to the more verbose @property based approach:
-        >>> class DistanceToCamera2(vtkDistanceToCamera):
+        >>>
+        >>> # This is equivalent to the more verbose @property based approach:
+        >>> class _DistanceToCamera(vtkDistanceToCamera):
         >>>     @property
         >>>     def screen_size(self) -> float:
         >>>         '''The desired screen size obtained by scaling glyphs by the distance array.'''
@@ -102,7 +105,7 @@ class IVar(Generic[_T_Get, _T_Set]):
     """
     def __init__(
             self,
-            doc: Optional[str] = None,
+            doc: str = '',
             vtkname: Optional[str] = None,
             fget: Optional[_Getter] = _sentinel_get,
             fset: Optional[_Setter] = _sentinel_set,
@@ -110,7 +113,7 @@ class IVar(Generic[_T_Get, _T_Set]):
             _cls: type = object,
     ):
 
-        self.__doc__ = doc or ''
+        self.__doc__ = doc
         self.fget: Optional[_Getter] = self._default_fget if fget is _sentinel_get else fget
         self.fset: Optional[_Setter] = self._default_fset if fset is _sentinel_set else fset
 
@@ -157,34 +160,17 @@ class IVar(Generic[_T_Get, _T_Set]):
         """Function decorator to replace fset."""
         return self.replace(fget=self.fget, fset=fset)
 
-    def _parse_annotation(self, anno) -> _T_Get_Set:
-        get_typ, set_typ = get_args(anno)
-        return get_typ, set_typ
+    def _types(self) -> Optional[_T_Get_Set]:
+        """Return a tuple of (GET_TYPE, SET_TYPE).
 
-    def types(self) -> Optional[_T_Get_Set]:
-        """Return a tuple of (GET_TYPE, SET_TYPE)."""
-        try:
-            anno = self.cls.__annotations__[self.name]
-        except KeyError:
-            return None
-
-        if isinstance(anno, str):
-            return None
-
-        try:
-            get_typ, set_typ = get_args(anno)
-        except (TypeError, ValueError):
-            return None
-
-        return get_typ, set_typ
+        Only used for building documentation. Return None if unknown.
+        """
+        return None
 
 
 class SimpleIVar(IVar[_T, _T], Generic[_T]):
     """IVar whose get and set types are identical."""
-
-    def _parse_annotation(self, anno) -> _T_Get_Set:
-        typ, = get_args(anno)
-        return typ, typ
+    pass
 
 
 class BoolIVar(SimpleIVar[bool]):
@@ -192,13 +178,13 @@ class BoolIVar(SimpleIVar[bool]):
     def _default_fget(self, instance: _T_Vtk) -> bool:
         return bool(super()._default_fget(instance))  # cast from int to bool
 
-    def types(self) -> Optional[_T_Get_Set]:
+    def _types(self) -> Optional[_T_Get_Set]:
         return bool, bool
 
 
 class FloatIVar(IVar[Number, float]):
     """IVar representing a float."""
-    def types(self) -> Optional[_T_Get_Set]:
+    def _types(self) -> Optional[_T_Get_Set]:
         return Number, float
 
 
@@ -248,7 +234,7 @@ class EnumIVar(IVar[str, str]):
         """Return a copy of self with fget or fset replaced."""
         return super().replace(fget=fget, fset=fset, str_to_int=self._str_to_int, int_to_str=self._int_to_str, **kwargs)
 
-    def types(self) -> Optional[_T_Get_Set]:
+    def _types(self) -> Optional[_T_Get_Set]:
         return str, str
 
 

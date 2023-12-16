@@ -8,8 +8,12 @@ from docutils.parsers.rst import Directive
 from docutils.parsers.rst.directives import unchanged
 from docutils.statemachine import ViewList
 from jinja2 import Template
+from sphinx import addnodes
+from sphinx.addnodes import desc_signature
+from sphinx.domains.python import PyObject
 from sphinx.errors import SphinxError
-from sphinx.ext.autodoc import AttributeDocumenter, ObjectMembers
+from sphinx.ext.autodoc import AttributeDocumenter, ObjectMembers, PropertyDocumenter, DocstringStripSignatureMixin, \
+    ClassLevelDocumenter, ModuleLevelDocumenter, annotation_option
 from sphinx.util import nested_parse_with_titles
 from sphinx.util.docutils import SphinxDirective
 
@@ -142,101 +146,83 @@ pygments_style = "friendly"
 import inspect
 
 
-def ivar_process_signature(app, what, name, obj, options, signature: inspect.signature, return_annotation):
+def ivar_process_signature(app, what, name, obj, options, signature: str, return_annotation):
     from pyvista.core.ivars import IVar
-    if isinstance(obj, IVar):
-        print('sig', signature)
+    if isinstance(obj, type) and issubclass(obj, IVar):
+        print('sig', type(signature), signature)
         # signature.replace(parameters=[inspect.Parameter("foo", kind=inspect.Parameter.KEYWORD_ONLY)])
         return 'foo', "bar"
 
 
-def ivar_before_process_signature(app, obj, bound):
-    from pyvista.core.ivars import IVar
-
-    # if isinstance(obj, IVar):
-    print(obj)
-
-
-class IVarDocumenter(AttributeDocumenter):
+class IVarDocumenter(DocstringStripSignatureMixin, ClassLevelDocumenter):
     directivetype = "ivar"
-    objtype = "prop"
-    priority = 20
-    member_order = -100  # This puts properties first in the docs
+    objtype = "ivar"
+    priority = PropertyDocumenter.priority + 1
+    # member_order = -100  # This puts properties first in the docs
 
     @classmethod
     def can_document_member(cls, member, membername, isattr, parent):
         return isinstance(member, IVar)
 
+    def document_members(self, all_members: bool = False) -> None:
+        pass
+
+    def import_object(self, raiseerror: bool = False) -> bool:
+        ret = super().import_object(raiseerror)
+        if self.parent:
+            AttributeDocumenter.update_annotations(self, self.parent)
+            # self.update_annotations(self.parent)
+
+        return ret
+
+    def add_directive_header(self, sig: str) -> None:
+        super().add_directive_header(sig)
+        sourcename = self.get_sourcename()
+
+        ivar: IVar = self.object
+        types = ivar._types()
+        if types is None:
+            if anno := self.parent.__annotations__.get(ivar.name):
+                print('annotation', anno)
+
+        self.add_line('   :gettype: ' + 'foo', sourcename)
+
     def get_object_members(self, want_all: bool) -> tuple[bool, ObjectMembers]:
         return False, []
 
 
-PROP_DETAIL = Template("""
-.. attribute:: {{ name }}
-    :module: {{ module }}
-    :annotation: = {{ default }}
-
-    :Type: {{ type_info }}
-    {% if doc %}
-
-    {{ doc|indent(4) }}
-    {% endif %}
-""".strip())
-
-
-class IvarDirective(SphinxDirective):
-
+class IvarDirective(PyObject):
     has_content = True
     required_arguments = 1
-    optional_arguments = 2
-    option_spec = {"module": unchanged, "type": unchanged}
+    optional_arguments = 1
+    option_spec = {"module": unchanged, "gettype": unchanged}
 
-    def parse(self, rst_text, annotation):
-        result = ViewList()
-        for line in rst_text.split("\n"):
-            result.append(line, annotation)
-        node = nodes.paragraph()
-        node.document = self.state.document
-        nested_parse_with_titles(self.state, result, node)
-        return node.children
+    def handle_signature(self, sig: str, signode: desc_signature) -> tuple[str, str]:
+        fullname, prefix = super().handle_signature(sig, signode)  # class, ivar_name
+        get_type = self.options.get('gettype')
+        print('get_type', get_type)
+        if get_type:
+            signode += addnodes.desc_annotation(get_type, '',
+                                                addnodes.desc_sig_punctuation('', ':'),
+                                                addnodes.desc_sig_space(),
+                                                )
+        # if typ:
+        #     annotations = _parse_annotation(typ, self.env)
+        #     signode += addnodes.desc_annotation(typ, '',
+        #                                         addnodes.desc_sig_punctuation('', ':'),
+        #                                         addnodes.desc_sig_space(),
+        #                                         *annotations)
 
-    def run(self):
+        return fullname, prefix
 
-        full_name = self.arguments[0]
-        model_name, prop_name = full_name.rsplit(".")
-        module_name = self.options["module"]
+    def get_signature_prefix(self, sig: str) -> list[nodes.Node]:
+        return [
+            nodes.Text('ivar'),
+            addnodes.desc_sig_space(),
+        ]
 
-        try:
-            module = importlib.import_module(module_name)
-        except ImportError:
-            raise SphinxError(f"Could not generate reference docs for {full_name}: could not import module {module_name}")
-
-        model = getattr(module, model_name, None)
-        if model is None:
-            raise SphinxError(f"Unable to generate reference docs for {full_name}: no model {model_name} in module {module_name}")
-
-        # We may need to instantiate deprecated objects as part of documenting
-        # them in the reference guide. Suppress any warnings here to keep the
-        # docs build clean just for this case
-        # with warnings.catch_warnings():
-        #     warnings.filterwarnings("ignore", category=BokehDeprecationWarning)
-        #     model_obj = model()
-
-        # try:
-        #     descriptor = model_obj.lookup(prop_name)
-        # except AttributeError:
-        #     raise SphinxError(f"Unable to generate reference docs for {full_name}: no property {prop_name} on model {model_name}")
-
-        rst_text = PROP_DETAIL.render(
-            name=prop_name,
-            module=self.options["module"],
-            default="default_value",   # repr(descriptor.instance_default(model_obj)),
-            type_info="type info", # type_link(descriptor.property),
-            doc="doc",  # if descriptor.__doc__ is None else textwrap.dedent(descriptor.__doc__),
-        )
-
-        return self.parse(rst_text, "<ivar>")
-
+    def get_index_text(self, modname: str, name: tuple[str, str]) -> str:
+        pass
 
 
 def setup(app):
