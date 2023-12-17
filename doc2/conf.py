@@ -3,6 +3,8 @@ import os
 import sys
 
 # enable autodoc to load local modules
+from typing import get_args
+
 from docutils import nodes
 from docutils.parsers.rst import Directive
 from docutils.parsers.rst.directives import unchanged
@@ -16,8 +18,9 @@ from sphinx.ext.autodoc import AttributeDocumenter, ObjectMembers, PropertyDocum
     ClassLevelDocumenter, ModuleLevelDocumenter, annotation_option
 from sphinx.util import nested_parse_with_titles
 from sphinx.util.docutils import SphinxDirective
+from sphinx.util.typing import stringify_annotation
 
-from pyvista.core.ivars import IVar
+from pyvista.core.ivars import IVar, SimpleIVar
 
 sys.path.insert(0, os.path.abspath("."))
 sys.path.append(os.path.abspath("./ext"))
@@ -182,10 +185,25 @@ class IVarDocumenter(DocstringStripSignatureMixin, ClassLevelDocumenter):
         ivar: IVar = self.object
         types = ivar._types()
         if types is None:
+            types = None, None
             if anno := self.parent.__annotations__.get(ivar.name):
-                print('annotation', anno)
+                if isinstance(self.object, SimpleIVar):
+                    typ = get_args(anno)
+                    types = (typ, typ)
+                else:
+                    types = get_args(anno)
 
-        self.add_line('   :gettype: ' + 'foo', sourcename)
+        get_type, set_type = types
+        if self.object.fget is None:
+            get_type = None
+        if self.object.fset is None:
+            set_type = None
+
+        get_type = stringify_annotation(get_type, mode='smart') if get_type else None
+        set_type = stringify_annotation(set_type, mode='smart') if set_type else None
+
+        self.add_line('   :gettype: ' + get_type, sourcename)
+        self.add_line('   :settype: ' + set_type, sourcename)
 
     def get_object_members(self, want_all: bool) -> tuple[bool, ObjectMembers]:
         return False, []
@@ -193,19 +211,20 @@ class IVarDocumenter(DocstringStripSignatureMixin, ClassLevelDocumenter):
 
 class IvarDirective(PyObject):
     has_content = True
-    required_arguments = 1
-    optional_arguments = 1
-    option_spec = {"module": unchanged, "gettype": unchanged}
+    required_arguments = 0
+    optional_arguments = 3
+    option_spec = {"module": unchanged, "gettype": unchanged, "settype": unchanged}
 
     def handle_signature(self, sig: str, signode: desc_signature) -> tuple[str, str]:
         fullname, prefix = super().handle_signature(sig, signode)  # class, ivar_name
-        get_type = self.options.get('gettype')
-        print('get_type', get_type)
+        get_type: str = self.options.get('gettype')
+        from sphinx.domains.python import _parse_annotation
         if get_type:
+            print('adding_get_type', get_type, type(get_type))
             signode += addnodes.desc_annotation(get_type, '',
                                                 addnodes.desc_sig_punctuation('', ':'),
                                                 addnodes.desc_sig_space(),
-                                                )
+                                                *_parse_annotation(get_type, self.env))
         # if typ:
         #     annotations = _parse_annotation(typ, self.env)
         #     signode += addnodes.desc_annotation(typ, '',

@@ -1,9 +1,8 @@
-from __future__ import annotations
+# from __future__ import annotations
 
-import typing
 from typing import TypeVar, Type, Optional, Generic, Callable, Dict, Any, Tuple
 
-from typing_extensions import Self, get_args
+from typing_extensions import Self
 
 from pyvista.core import _vtk_core as _vtk
 from pyvista.core._typing_core import Number, Vector
@@ -182,10 +181,10 @@ class BoolIVar(SimpleIVar[bool]):
         return bool, bool
 
 
-class FloatIVar(IVar[Number, float]):
+class FloatIVar(IVar[float, Number]):
     """IVar representing a float."""
     def _types(self) -> Optional[_T_Get_Set]:
-        return Number, float
+        return float, Number
 
 
 class EnumIVar(IVar[str, str]):
@@ -220,7 +219,7 @@ class EnumIVar(IVar[str, str]):
         getattr(instance, f'Set{self.vtkname}')(val)
 
     @staticmethod
-    def from_dict(members: Dict[str, int], *args, **kwargs) -> EnumIVar:
+    def from_dict(members: Dict[str, int], *args, **kwargs) -> 'EnumIVar':
         out = EnumIVar(
             *args,
             str_to_int=members,
@@ -247,7 +246,7 @@ class Glyph3d(_vtk.vtkGlyph3D):
         dict(scalar=0, vector=1, vector_components=2, off=3),
         'How to control scaling of the glyph geometry.'
     )
-    range_: IVar[Vector, Tuple[float, float]] = IVar(
+    range_: IVar[Tuple[float, float], Vector] = IVar(
         'Range to map scalar values into if a table of glyphs is supplied.',
         vtkname='Range',
     )

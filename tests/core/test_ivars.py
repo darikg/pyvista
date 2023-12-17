@@ -6,7 +6,7 @@ from vtkmodules.vtkCommonDataModel import vtkIncrementalPointLocator, vtkMergePo
 
 from pyvista.core import _vtk_core as _vtk
 from pyvista.core._typing_core import Vector, Number
-from pyvista.core.ivars import BoolIVar, FloatIVar, EnumIVar, IVar
+from pyvista.core.ivars import BoolIVar, FloatIVar, EnumIVar, IVar, SimpleIVar
 
 
 class Glyph3d(_vtk.vtkGlyph3D):
@@ -16,7 +16,7 @@ class Glyph3d(_vtk.vtkGlyph3D):
         dict(scalar=0, vector=1, vector_components=2, off=3),
         'How to control scaling of the glyph geometry.'
     )
-    range_: IVar[Vector, Tuple[float, float]] = IVar(
+    range_: IVar[Tuple[float, float], Vector] = IVar(
         'Range to map scalar values into if a table of glyphs is supplied.',
         vtkname='Range',
     )
@@ -58,18 +58,18 @@ def test_custom_vtkname(glyph):
 
 def test_glyph_type_reflection():
     assert Glyph3d.scaling.types() == (bool, bool)
-    assert Glyph3d.scale_factor.types() == (Number, float)
+    assert Glyph3d.scale_factor.types() == (float, Number)
     assert Glyph3d.scale_mode.types() == (str, str)
-    assert Glyph3d.range_.types() == (Vector, Tuple[float, float])
+    assert Glyph3d.range_.types() == (Tuple[float, float], Vector)
 
 
 class Connectivity(_vtk.vtkConnectivityFilter):
-    scalar_range: IVar[Vector, Tuple[float, float]] = IVar(
+    scalar_range: IVar[Tuple[float, float], Vector] = IVar(
         'The scalar range to use to extract cells based on scalar connectivity.')
 
-    n_extracted_regions: IVar[int, int] = IVar('The number of connected regions', fset=None)
+    n_extracted_regions: SimpleIVar[int] = SimpleIVar('The number of connected regions', fset=None)
 
-    seed_list: IVar[Vector, Tuple[int, ...]] = IVar(
+    seed_list: IVar[Tuple[int, ...], Vector] = IVar(
         'List of point ids/cell ids used to seed regions.', fget=None)
 
     @seed_list.setter
@@ -112,9 +112,9 @@ def test_ivar_no_setter(connectivity):
 
 
 def test_connectivity_type_reflection():
-    assert Connectivity.scalar_range.types() == (Vector, Tuple[float, float])
+    assert Connectivity.scalar_range.types() == (Tuple[float, float], Vector)
     assert Connectivity.n_extracted_regions.types() == (int, int)
-    assert Connectivity.seed_list.types() == (Vector, Tuple[int, ...])
+    assert Connectivity.seed_list.types() == (Tuple[int, ...], Vector)
 
 
 class BoxClip(_vtk.vtkBoxClipDataSet):
