@@ -1,6 +1,7 @@
 # from __future__ import annotations
-
-from typing import TypeVar, Type, Optional, Generic, Callable, Dict, Any, Tuple
+import typing
+from types import GenericAlias
+from typing import TypeVar, Type, Optional, Generic, Callable, Dict, Any, Tuple, Union
 
 from typing_extensions import Self
 
@@ -23,7 +24,8 @@ _T = TypeVar('_T')
 _T_Vtk = Any
 _T_Set = TypeVar('_T_Set')
 _T_Get = TypeVar('_T_Get')
-_T_Get_Set = Tuple[Type[_T_Get], Type[_T_Set]]
+_Hint = Union[Type[Any], GenericAlias]
+_Hints = Tuple[Optional[_Hint], Optional[_Hint]]  # GetType, SetType
 _Getter = Callable[[_T_Vtk], _T_Get]
 _Setter = Callable[[_T_Vtk, _T_Set], None]
 
@@ -155,11 +157,7 @@ class IVar(Generic[_T_Get, _T_Set]):
         """Function decorator to replace fget."""
         return self.replace(fget=fget, fset=self.fset)
 
-    def setter(self, fset: Optional[_Setter]) -> Self:
-        """Function decorator to replace fset."""
-        return self.replace(fget=self.fget, fset=fset)
-
-    def _types(self) -> Optional[_T_Get_Set]:
+    def get_type_hints(self, anno: Optional[Type[Self]]) -> Optional[_Hints]:
         """Return a tuple of (GET_TYPE, SET_TYPE).
 
         Only used for building documentation. Return None if unknown.
@@ -169,7 +167,13 @@ class IVar(Generic[_T_Get, _T_Set]):
 
 class SimpleIVar(IVar[_T, _T], Generic[_T]):
     """IVar whose get and set types are identical."""
-    pass
+
+    def get_type_hints(self, anno: Optional[Type[Self]]) -> Optional[_Hints]:
+        if anno:
+            typ, = typing.get_args(anno)
+            return typ, typ
+        else:
+            return None
 
 
 class BoolIVar(SimpleIVar[bool]):
@@ -177,13 +181,14 @@ class BoolIVar(SimpleIVar[bool]):
     def _default_fget(self, instance: _T_Vtk) -> bool:
         return bool(super()._default_fget(instance))  # cast from int to bool
 
-    def _types(self) -> Optional[_T_Get_Set]:
+    def get_type_hints(self, anno: Optional[Type[Self]]) -> Optional[_Hints]:
         return bool, bool
 
 
 class FloatIVar(IVar[float, Number]):
     """IVar representing a float."""
-    def _types(self) -> Optional[_T_Get_Set]:
+
+    def get_type_hints(self, anno: Optional[Type[Self]]) -> Optional[_Hints]:
         return float, Number
 
 
@@ -233,7 +238,7 @@ class EnumIVar(IVar[str, str]):
         """Return a copy of self with fget or fset replaced."""
         return super().replace(fget=fget, fset=fset, str_to_int=self._str_to_int, int_to_str=self._int_to_str, **kwargs)
 
-    def _types(self) -> Optional[_T_Get_Set]:
+    def get_type_hints(self, anno: Optional[Type[Self]]) -> Optional[_Hints]:
         return str, str
 
 
