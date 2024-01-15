@@ -643,7 +643,6 @@ class CellArray(_vtk.vtkCellArray):
         np.ndarray
             A numpy array of the cells.
         """
-        # cells = np.empty(self.GetNumberOfConnectivityEntries(), dtype=pyvista.ID_TYPE)
         cells = _vtk.vtkIdTypeArray()
         self.ExportLegacyFormat(cells)
         return _vtk.vtk_to_numpy(cells)
