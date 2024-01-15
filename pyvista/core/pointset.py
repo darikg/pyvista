@@ -490,22 +490,12 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         will be assigned to a single vertex.  This is used for point
         clouds that have no connectivity.
 
-    n_faces : int, optional
-        Number of faces in the ``faces`` connectivity array.  While
-        optional, setting this speeds up the creation of the
-        ``PolyData``.
-
     lines : sequence, optional
         The line connectivity array.  Like ``faces``, this array
         requires padding indicating the number of points in a line
         segment.  For example, the two line segments ``[0, 1]`` and
         ``[1, 2, 3, 4]`` will be represented as
         ``[2, 0, 1, 4, 1, 2, 3, 4]``.
-
-    n_lines : int, optional
-        Number of lines in the ``lines`` connectivity array.  While
-        optional, setting this speeds up the creation of the
-        ``PolyData``.
 
     strips : sequence, optional
         Triangle strips connectivity array.  Triangle strips require an initial
@@ -515,11 +505,6 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         padding indicating the number of points. For example,
         a single triangle strip of ``[0, 1, 2, 3, 6, 7, 4, 5, 0, 1]`` requires padding of
         ``10`` and should input as ``[10, 0, 1, 2, 3, 6, 7, 4, 5, 0, 1]``.
-
-    n_strips : int, optional
-        Number of strips in the ``strips`` connectivity array.  While
-        optional, setting this speeds up the creation of the
-        ``PolyData``.
 
     deep : bool, optional
         Whether to copy the inputs, or to create a mesh from them
@@ -545,10 +530,12 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         each with one point, and ``[2, 0, 1, 2, 2, 3]`` indicates two
         polyvertex cells each with two points.
 
-    n_verts : int, optional
-        Number of verts in the ``verts`` connectivity array.  While
-        optional, setting this speeds up the creation of the
-        ``PolyData``.
+    n_faces, n_lines, n_strips, n_verts : int, optional
+        These parameters were previously used to speed up the construction of the corresponding
+        cell arrays but no longer provide any benefit. They have been deprecated.
+
+    .. deprecated:: 0.44.0
+    The parameters ``n_faces``, ``n_lines``, ``n_strips``, ``n_verts`` are deprecated and no longer used.
 
     See Also
     --------
@@ -684,25 +671,24 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         if faces is lines is strips is verts is None:
             # one cell per point (point cloud case)
             verts = self._make_vertex_cells(self.n_points)
-            n_verts = self.n_points
 
-        # here we use CellArray since we must specify deep and n_faces, etc.
-        if verts is not None:
-            self.verts = CellArray(verts, n_verts, deep)  # type: ignore
-        if strips is not None:
-            self.strips = CellArray(strips, n_strips, deep)  # type: ignore
-        if faces is not None:
-            self.faces = CellArray(faces, n_faces, deep)  # type: ignore
-        if lines is not None:
-            self.lines = CellArray(lines, n_lines, deep)  # type: ignore
+        for k, v in dict(verts=verts, strips=strips, faces=faces, lines=lines).items():
+            if v is not None:
+                setattr(self, k, v)
+
+        for k, v in dict(n_verts=n_verts, n_strips=n_strips, n_faces=n_faces, n_lines=n_lines).items():
+            if v is not None:
+                warnings.warn(
+                    f"`PolyData parameter `{k}` is deprecated and no longer used.",
+                    PyVistaDeprecationWarning,
+                )
 
     def _post_file_load_processing(self) -> None:
         """Execute after loading a PolyData from file."""
         # When loading files with just point arrays, create and
         # set the polydata vertices
         if self.n_points > 0 and self.n_cells == 0:
-            verts = self._make_vertex_cells(self.n_points)
-            self.verts = CellArray(verts, self.n_points, deep=False)  # type: ignore
+            self.verts = self._make_vertex_cells(self.n_points)
         return None
 
     def __repr__(self) -> str:
@@ -1779,7 +1765,7 @@ class UnstructuredGrid(_vtk.vtkUnstructuredGrid, PointGrid, UnstructuredGridFilt
         points = np.asarray(points)
 
         # Convert to vtk arrays
-        vtkcells = CellArray(cells, cell_type.size, deep)
+        vtkcells = CellArray(cells)
         if cell_type.dtype != np.uint8:
             cell_type = cell_type.astype(np.uint8)
         cell_type = _vtk.numpy_to_vtk(cell_type, deep=deep)
@@ -2649,7 +2635,7 @@ class ExplicitStructuredGrid(_vtk.vtkExplicitStructuredGrid, PointGrid):
         points = vtk_points(points)
         self.SetDimensions(dims[0], dims[1], dims[2])
         self.SetPoints(points)
-        self.SetCells(CellArray(cells, ncells))
+        self.SetCells(CellArray(cells))
 
     def cast_to_unstructured_grid(self) -> 'UnstructuredGrid':
         """Cast to an unstructured grid.

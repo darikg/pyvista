@@ -214,11 +214,6 @@ def test_verts():
     assert mesh.n_verts == 5
     assert mesh.get_cell(0).type == pv.CellType.VERTEX
 
-    mesh = pv.PolyData(vertices, verts=[1, 0, 1, 1, 1, 2, 1, 3, 1, 4], n_verts=5)
-    assert np.array_equal(mesh.verts, [1, 0, 1, 1, 1, 2, 1, 3, 1, 4])
-    assert mesh.n_verts == 5
-    assert mesh.get_cell(0).type == pv.CellType.VERTEX
-
     mesh = pv.PolyData(
         vertices,
         verts=[

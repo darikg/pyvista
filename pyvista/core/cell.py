@@ -1,18 +1,18 @@
 """Contains the pyvista.Cell class."""
 from __future__ import annotations
 
+import warnings
 from typing import List, Optional, Sequence, Tuple, Union, cast
 
 import numpy as np
 
 import pyvista
-
 from . import _vtk_core as _vtk
 from ._typing_core import Matrix, NumpyArray, Vector
 from .celltype import CellType
 from .dataset import DataObject
-from .errors import CellSizeError
-from .utilities.cells import ncells_from_cells, numpy_to_idarr
+from .errors import CellSizeError, PyVistaDeprecationWarning
+from .utilities.cells import numpy_to_idarr
 
 
 def _get_vtk_id_type():
@@ -597,6 +597,9 @@ class CellArray(_vtk.vtkCellArray):
     deep : bool, default: False
         Perform a deep copy of the original cell.
 
+    .. deprecated:: 0.44.0
+    The parameters ``n_cells`` and ``deep`` are deprecated and no longer used.
+
     Examples
     --------
     Create a cell array containing two triangles from the traditional interleaved format
@@ -616,41 +619,20 @@ class CellArray(_vtk.vtkCellArray):
         self,
         cells: Optional[Union[Matrix[int], Vector[int]]] = None,
         n_cells: Optional[int] = None,
-        deep: bool = False,
+        deep: bool = None,
     ):
         """Initialize a vtkCellArray."""
         self.__offsets: Optional[_vtk.vtkIdTypeArray] = None
         self.__connectivity: Optional[_vtk.vtkIdTypeArray] = None
         if cells is not None:
-            self._set_cells(np.asarray(cells), n_cells, deep)
+            self.cells = cells
 
-    def _set_cells(self, cells: NumpyArray[int], n_cells: Optional[int], deep: bool) -> None:
-        """Set a vtkCellArray."""
-        vtk_idarr, cells = numpy_to_idarr(cells, deep=deep, return_ind=True)  # type: ignore
-
-        # Get number of cells if None.  This is quite a performance
-        # bottleneck and we can consider adding a warning.  Good
-        # candidate for Cython or JIT compilation
-        if n_cells is None:
-            if cells.ndim == 1:
-                n_cells = ncells_from_cells(cells)
-            else:
-                n_cells = cells.shape[0]
-
-        self.SetCells(n_cells, vtk_idarr)
-
-        # https://github.com/pyvista/pyvista/pull/5404
-        if self.cells.size != cells.size:
-            raise CellSizeError(
-                message=(
-                    f"Cell array size is invalid. Size ({cells.size}) does not"
-                    f" match expected size ({self.cells.size}). This is likely"
-                    " due to invalid connectivity array."
+        for k, v in dict(n_cells=n_cells, deep=deep).items():
+            if v is not None:
+                warnings.warn(
+                    f"`CellArray parameter `{k}` is deprecated and no longer used.",
+                    PyVistaDeprecationWarning,
                 )
-            )
-
-        self.__offsets = self.__connectivity = None
-        return None
 
     @property
     def cells(self) -> np.ndarray:  # numpydoc ignore=RT01
@@ -661,7 +643,29 @@ class CellArray(_vtk.vtkCellArray):
         np.ndarray
             A numpy array of the cells.
         """
-        return _vtk.vtk_to_numpy(self.GetData()).ravel()
+        # cells = np.empty(self.GetNumberOfConnectivityEntries(), dtype=pyvista.ID_TYPE)
+        cells = _vtk.vtkIdTypeArray()
+        self.ExportLegacyFormat(cells)
+        return _vtk.vtk_to_numpy(cells)
+
+    @cells.setter
+    def cells(self, cells: NumpyArray[int]):
+        """Set a vtkCellArray."""
+        cells = np.asarray(cells)
+        vtk_idarr = numpy_to_idarr(cells, deep=False, return_ind=False)
+        self.ImportLegacyFormat(vtk_idarr)
+        imported_size = self.GetNumberOfConnectivityEntries()
+
+        # https://github.com/pyvista/pyvista/pull/5404
+        if  imported_size != cells.size:
+            raise CellSizeError(
+                message=(
+                    f"Cell array size is invalid. Size ({cells.size}) does not"
+                    f" match expected size ({self.cells.size}). This is likely"
+                    " due to invalid connectivity array."
+                )
+            )
+        self.__offsets = self.__connectivity = None
 
     @property
     def n_cells(self) -> int:  # numpydoc ignore=RT01

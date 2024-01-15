@@ -345,8 +345,6 @@ NCELLS = 2
 FCONTIG_ARR = np.array(np.vstack(([3, 0, 1, 2], [3, 3, 4, 5])), order='F')
 
 
-@pytest.mark.parametrize('deep', [False, True])
-@pytest.mark.parametrize('n_cells', [None, NCELLS])
 @pytest.mark.parametrize(
     'cells',
     [
@@ -357,8 +355,8 @@ FCONTIG_ARR = np.array(np.vstack(([3, 0, 1, 2], [3, 3, 4, 5])), order='F')
         FCONTIG_ARR,
     ],
 )
-def test_init_cell_array(cells, n_cells, deep):
-    cell_array = pv.core.cell.CellArray(cells, n_cells, deep)
+def test_init_cell_array(cells):
+    cell_array = pv.core.cell.CellArray(cells)
     assert np.allclose(np.array(cells).ravel(), cell_array.cells)
     assert cell_array.n_cells == cell_array.GetNumberOfCells() == NCELLS
 
