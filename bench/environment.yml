@@ -1,0 +1,13 @@
+name: pyvista-bench
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python>=3.8
+  - numpy
+  - vtk
+  - meshio
+  - pip
+  - trimesh
+  - rtree

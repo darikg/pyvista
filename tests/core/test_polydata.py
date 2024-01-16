@@ -115,6 +115,14 @@ def test_init_from_arrays_triangular():
     assert mesh.n_cells == 3
 
 
+def test_make_vertex_cells():
+    n_pts = 3
+    cell_arr = pv.PolyData._make_vertex_cells(n_pts)
+    assert cell_arr.n_cells == n_pts
+    assert np.array_equal(pv.core.cell._get_connectivity_array(cell_arr), np.arange(n_pts))
+    assert np.array_equal(pv.core.cell._get_offset_array(cell_arr), np.arange(n_pts + 1))
+
+
 def test_init_as_points():
     vertices = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0.5, 0.5, -1]])
 
@@ -122,17 +130,10 @@ def test_init_as_points():
     assert mesh.n_points == vertices.shape[0]
     assert mesh.n_cells == vertices.shape[0]
     assert len(mesh.verts) == vertices.shape[0] * 2
+    assert np.array_equal(mesh.verts, [1, 0, 1, 1, 1, 2, 1, 3, 1, 4])
 
     vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
     cells = np.array([1, 0, 1, 1, 1, 2], np.int16)
-    to_check = pv.PolyData._make_vertex_cells(len(vertices)).ravel()
-    assert np.allclose(to_check, cells)
-
-    # from list
-    mesh.verts = [[1, 0], [1, 1], [1, 2]]
-    to_check = pv.PolyData._make_vertex_cells(len(vertices)).ravel()
-    assert np.allclose(to_check, cells)
-
     mesh = pv.PolyData()
     mesh.points = vertices
     mesh.verts = cells
@@ -1163,3 +1164,15 @@ def test_irregular_faces_mutable():
     mesh.irregular_faces[0][0] = 4
     expected = [(4, 1, 2, 3), *faces[1:]]
     _assert_irregular_faces_equal(mesh.irregular_faces, expected)
+
+
+@pytest.mark.parametrize('cells', ['faces', 'lines', 'strips', 'verts'])
+def test_n_faces_etc_deprecated(cells: str):
+    n_cells = 'n_' + cells
+    kwargs = {cells: [3, 0, 1, 2], n_cells: 1}  # e.g. specify faces and n_faces
+    with pytest.warns(pv.PyVistaDeprecationWarning):
+        _ = pv.PolyData(np.zeros((3, 3)), **kwargs)
+        if pv._version.version_info >= (0, 47):
+            raise RuntimeError(f"Convert `PolyData` `{n_cells}` deprecation warning to error")
+        if pv._version.version_info >= (0, 48):
+            raise RuntimeError(f"Remove `PolyData` `{n_cells} constructor kwarg")

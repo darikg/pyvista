@@ -631,7 +631,8 @@ class CellArray(_vtk.vtkCellArray):
         if cells is not None:
             self.cells = cells
 
-        for k, v in dict(n_cells=n_cells, deep=deep).items():
+        # deprecated 0.44.0, convert to error in 0.47.0, remove 0.48.0
+        for k, v in (('n_cells', n_cells), ('deep', deep)):
             if v is not None:
                 warnings.warn(
                     f"`CellArray parameter `{k}` is deprecated and no longer used.",

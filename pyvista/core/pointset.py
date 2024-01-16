@@ -686,11 +686,11 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
 
             setattr(self, propname, propval)
 
-        # Check for deprecated kwargs
-        for propname, propval in dict(n_verts=n_verts, n_strips=n_strips, n_faces=n_faces, n_lines=n_lines).items():
-            if propval is not None:
+        # deprecated 0.44.0, convert to error in 0.47.0, remove 0.48.0
+        for k, v in (('n_verts', n_verts), ('n_strips', n_strips), ('n_faces', n_faces), ('n_lines', n_lines)):
+            if v is not None:
                 warnings.warn(
-                    f"`PolyData parameter `{propname}` is deprecated and no longer used.",
+                    f"`PolyData` constructor parameter `{k}` is deprecated and no longer used.",
                     PyVistaDeprecationWarning,
                 )
 
@@ -711,11 +711,8 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         return DataSet.__str__(self)
 
     @staticmethod
-    def _make_vertex_cells(npoints: int) -> NumpyArray[int]:
-        cells = np.empty((npoints, 2), dtype=pyvista.ID_TYPE)
-        cells[:, 0] = 1
-        cells[:, 1] = np.arange(npoints, dtype=pyvista.ID_TYPE)
-        return cells
+    def _make_vertex_cells(npoints: int) -> CellArray:
+        return CellArray.from_regular_cells(np.arange(npoints, dtype=pyvista.ID_TYPE).reshape((npoints, 1)))
 
     @property
     def verts(self) -> NumpyArray[int]:  # numpydoc ignore=RT01
