@@ -656,7 +656,7 @@ class CellArray(_vtk.vtkCellArray):
         imported_size = self.GetNumberOfConnectivityEntries()
 
         # https://github.com/pyvista/pyvista/pull/5404
-        if  imported_size != cells.size:
+        if imported_size != cells.size:
             raise CellSizeError(
                 message=(
                     f"Cell array size is invalid. Size ({cells.size}) does not"
