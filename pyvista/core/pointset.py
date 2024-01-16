@@ -19,7 +19,7 @@ from .cell import (
     _get_connectivity_array,
     _get_irregular_cells,
     _get_offset_array,
-    _get_regular_cells,
+    _get_regular_cells, CellArrayLike,
 )
 from .celltype import CellType
 from .dataset import DataSet
@@ -28,7 +28,7 @@ from .errors import (
     PointSetDimensionReductionError,
     PointSetNotSupported,
     PyVistaDeprecationWarning,
-    VTKVersionError,
+    VTKVersionError, CellSizeError,
 )
 from .filters import PolyDataFilters, StructuredGridFilters, UnstructuredGridFilters, _get_output
 from .utilities.cells import create_mixed_cells, get_mixed_cells, numpy_to_idarr
@@ -604,16 +604,16 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
     def __init__(
         self,
         var_inp: Union[_vtk.vtkPolyData, str, Matrix] = None,
-        faces: Optional[Vector[int]] = None,
+        faces: Optional[CellArrayLike] = None,
         n_faces: Optional[int] = None,
-        lines: Optional[Vector[int]] = None,
+        lines: Optional[CellArrayLike] = None,
         n_lines: Optional[int] = None,
-        strips: Optional[Vector[int]] = None,
+        strips: Optional[CellArrayLike] = None,
         n_strips: Optional[int] = None,
         deep: bool = False,
         force_ext: Optional[str] = None,
         force_float: Optional[bool] = True,
-        verts: Optional[Vector[int]] = None,
+        verts: Optional[CellArrayLike] = None,
         n_verts: Optional[int] = None,
     ) -> None:
         """Initialize the polydata."""
@@ -672,14 +672,25 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
             # one cell per point (point cloud case)
             verts = self._make_vertex_cells(self.n_points)
 
-        for k, v in dict(verts=verts, strips=strips, faces=faces, lines=lines).items():
-            if v is not None:
-                setattr(self, k, v)
+        for propname, propval in dict(verts=verts, strips=strips, faces=faces, lines=lines).items():
+            if propval is None:
+                continue
 
-        for k, v in dict(n_verts=n_verts, n_strips=n_strips, n_faces=n_faces, n_lines=n_lines).items():
-            if v is not None:
+            # These properties can be supplied as either arrays or pre-constructed `CellArray`s
+            if not isinstance(propval, _vtk.vtkCellArray):
+                try:
+                    propval = CellArray(propval)
+                except CellSizeError as err:
+                    # Raise an additional error so user knows which property triggered the error
+                    raise CellSizeError(f"`{propname}` cell array size is invalid.") from err
+
+            setattr(self, propname, propval)
+
+        # Check for deprecated kwargs
+        for propname, propval in dict(n_verts=n_verts, n_strips=n_strips, n_faces=n_faces, n_lines=n_lines).items():
+            if propval is not None:
                 warnings.warn(
-                    f"`PolyData parameter `{k}` is deprecated and no longer used.",
+                    f"`PolyData parameter `{propname}` is deprecated and no longer used.",
                     PyVistaDeprecationWarning,
                 )
 
@@ -746,7 +757,7 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         return _vtk.vtk_to_numpy(self.GetVerts().GetData())
 
     @verts.setter
-    def verts(self, verts: Vector[int]):  # numpydoc ignore=GL08
+    def verts(self, verts: CellArrayLike):  # numpydoc ignore=GL08
         if isinstance(verts, CellArray):
             self.SetVerts(verts)
         else:
@@ -771,7 +782,7 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         return _vtk.vtk_to_numpy(self.GetLines().GetData()).ravel()
 
     @lines.setter
-    def lines(self, lines: Vector[int]):  # numpydoc ignore=GL08
+    def lines(self, lines: CellArrayLike):  # numpydoc ignore=GL08
         if isinstance(lines, CellArray):
             self.SetLines(lines)
         else:
@@ -842,7 +853,7 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         return array
 
     @faces.setter
-    def faces(self, faces: NumpyArray[int]):  # numpydoc ignore=GL08
+    def faces(self, faces: CellArrayLike):  # numpydoc ignore=GL08
         if isinstance(faces, CellArray):
             self.SetPolys(faces)
         else:
@@ -887,7 +898,7 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
     @regular_faces.setter
     def regular_faces(self, faces: Union[np.ndarray, Matrix[int]]):  # numpydoc ignore=PR01
         """Set the face cells from an (n_faces, face_size) array."""
-        self.faces = CellArray.from_regular_cells(faces)  # type: ignore
+        self.faces = CellArray.from_regular_cells(faces)
 
     @classmethod
     def from_regular_faces(cls, points: Matrix, faces: Matrix[int], deep=False):
@@ -923,10 +934,7 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         >>> tetra = pv.PolyData.from_regular_faces(points, faces)
         >>> tetra.plot()
         """
-        p = cls()
-        p.points = points  # type: ignore
-        p.faces = CellArray.from_regular_cells(faces, deep=deep)  # type: ignore
-        return p
+        return cls(points, faces=CellArray.from_regular_cells(faces, deep=deep))
 
     @property
     def irregular_faces(self) -> Tuple[NumpyArray[int], ...]:  # numpydoc ignore=RT01
@@ -1003,10 +1011,7 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         >>> pyramid = pv.PolyData.from_irregular_faces(points, faces)
         >>> pyramid.plot()
         """
-        p = cls()
-        p.points = points  # type: ignore
-        p.faces = CellArray.from_irregular_cells(faces)  # type: ignore
-        return p
+        return cls(points, faces=CellArray.from_irregular_cells(faces))
 
     @property
     def strips(self) -> np.ndarray:  # numpydoc ignore=RT01
@@ -1028,7 +1033,7 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         return _vtk.vtk_to_numpy(self.GetStrips().GetData())
 
     @strips.setter
-    def strips(self, strips):  # numpydoc ignore=GL08
+    def strips(self, strips: CellArrayLike):  # numpydoc ignore=GL08
         if isinstance(strips, CellArray):
             self.SetStrips(strips)
         else:

@@ -577,6 +577,10 @@ class Cell(_vtk.vtkGenericCell, DataObject):
         return type(self)(self, deep=deep)
 
 
+CellsLike = Union[Matrix[int], Vector[int]]
+CellArrayLike = Union[CellsLike, _vtk.vtkCellArray]
+
+
 class CellArray(_vtk.vtkCellArray):
     """PyVista wrapping of vtkCellArray.
 
@@ -617,7 +621,7 @@ class CellArray(_vtk.vtkCellArray):
 
     def __init__(
         self,
-        cells: Optional[Union[Matrix[int], Vector[int]]] = None,
+        cells: Optional[CellsLike] = None,
         n_cells: Optional[int] = None,
         deep: bool = None,
     ):
