@@ -623,13 +623,13 @@ class CellArray(_vtk.vtkCellArray):
         self,
         cells: Optional[CellsLike] = None,
         n_cells: Optional[int] = None,
-        deep: bool = None,
+        deep: Optional[bool] = None,
     ):
         """Initialize a vtkCellArray."""
         self.__offsets: Optional[_vtk.vtkIdTypeArray] = None
         self.__connectivity: Optional[_vtk.vtkIdTypeArray] = None
         if cells is not None:
-            self.cells = cells
+            self.cells = cells  # type: ignore
 
         # deprecated 0.44.0, convert to error in 0.47.0, remove 0.48.0
         for k, v in (('n_cells', n_cells), ('deep', deep)):
@@ -640,7 +640,7 @@ class CellArray(_vtk.vtkCellArray):
                 )
 
     @property
-    def cells(self) -> np.ndarray:  # numpydoc ignore=RT01
+    def cells(self) -> NumpyArray[int]:  # numpydoc ignore=RT01
         """Return a numpy array of the cells.
 
         Returns
@@ -653,7 +653,7 @@ class CellArray(_vtk.vtkCellArray):
         return _vtk.vtk_to_numpy(cells)
 
     @cells.setter
-    def cells(self, cells: NumpyArray[int]):
+    def cells(self, cells: CellsLike):  # numpydoc ignore=GL08
         """Set a vtkCellArray."""
         cells = np.asarray(cells)
         vtk_idarr = numpy_to_idarr(cells, deep=False, return_ind=False)
