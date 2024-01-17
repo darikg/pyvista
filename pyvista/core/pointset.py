@@ -13,14 +13,13 @@ import numpy as np
 import pyvista
 
 from . import _vtk_core as _vtk
-from ._typing_core import Array, BoundsLike, Matrix, NumpyArray, Vector
+from ._typing_core import Array, BoundsLike, Matrix, NumpyArray, Vector, CellArrayLike
 from .cell import (
     CellArray,
     _get_connectivity_array,
     _get_irregular_cells,
     _get_offset_array,
-    _get_regular_cells, CellArrayLike,
-)
+    _get_regular_cells, )
 from .celltype import CellType
 from .dataset import DataSet
 from .errors import (
@@ -750,12 +749,15 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         ...     point_size=60,
         ... )
 
+        Vertex cells can also be set to a ``pyvista.CellArray``. The following
+        ``verts`` assignment is equivalent to the one above.
+        >>> mesh.verts = pv.CellArray.from_regular_cells(np.arange(mesh.n_points).reshape((-1, 1)))
         """
         return _vtk.vtk_to_numpy(self.GetVerts().GetData())
 
     @verts.setter
     def verts(self, verts: CellArrayLike):  # numpydoc ignore=GL08
-        if isinstance(verts, CellArray):
+        if isinstance(verts, _vtk.vtkCellArray):
             self.SetVerts(verts)
         else:
             self.SetVerts(CellArray(verts))
@@ -780,7 +782,7 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
 
     @lines.setter
     def lines(self, lines: CellArrayLike):  # numpydoc ignore=GL08
-        if isinstance(lines, CellArray):
+        if isinstance(lines, _vtk.vtkCellArray):
             self.SetLines(lines)
         else:
             self.SetLines(CellArray(lines))
@@ -843,6 +845,11 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
         >>> mesh.faces
         array([3, 0, 1, 2, 3, 3, 2, 1])
 
+        Faces can also be set by assigning a ``pyvista.CellArray``.
+        >>> mesh = pv.Plane(i_resolution=3, j_resolution=3)
+        >>> mesh.faces = pv.CellArray.from_regular_cells(np.arange(mesh.n_points).reshape(-1, 4))
+        >>> mesh.faces
+        array([4, 0, 1, 2, 3, 4, 4, 5, 6, 7, 4, 8, 9, 10, 11, 4, 12, 13, 14, 15])
         """
         array = _vtk.vtk_to_numpy(self.GetPolys().GetData())
         # Flag this array as read only to ensure users do not attempt to write to it.
@@ -851,7 +858,7 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
 
     @faces.setter
     def faces(self, faces: CellArrayLike):  # numpydoc ignore=GL08
-        if isinstance(faces, CellArray):
+        if isinstance(faces, _vtk.vtkCellArray):
             self.SetPolys(faces)
         else:
             # TODO: faster to mutate in-place if array is same size?
@@ -1031,7 +1038,7 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
 
     @strips.setter
     def strips(self, strips: CellArrayLike):  # numpydoc ignore=GL08
-        if isinstance(strips, CellArray):
+        if isinstance(strips, _vtk.vtkCellArray):
             self.SetStrips(strips)
         else:
             self.SetStrips(CellArray(strips))

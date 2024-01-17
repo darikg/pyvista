@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import warnings
-from typing import List, Optional, Sequence, Tuple, Union, cast
+from typing import List, Optional, Sequence, Tuple, cast
 
 import numpy as np
 
 import pyvista
 from . import _vtk_core as _vtk
-from ._typing_core import Matrix, NumpyArray, Vector
+from ._typing_core import Matrix, NumpyArray, Vector, CellsLike, CellArrayLike
 from .celltype import CellType
 from .dataset import DataObject
 from .errors import CellSizeError, PyVistaDeprecationWarning
@@ -575,10 +575,6 @@ class Cell(_vtk.vtkGenericCell, DataObject):
 
         """
         return type(self)(self, deep=deep)
-
-
-CellsLike = Union[Matrix[int], Vector[int]]
-CellArrayLike = Union[CellsLike, _vtk.vtkCellArray]
 
 
 class CellArray(_vtk.vtkCellArray):
