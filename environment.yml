@@ -22,7 +22,7 @@ dependencies:
   - pip
   - trimesh
   - rtree
-  - pyembree
+  # - pyembree
   - pooch
   - trame>=2.5.2
   - trame-vuetify>=2.3.1
