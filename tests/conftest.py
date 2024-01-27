@@ -1,5 +1,6 @@
 from importlib import metadata
 import re
+from typing import Callable, Any
 
 import numpy as np
 from numpy.random import default_rng
@@ -181,6 +182,20 @@ def texture():
 @fixture()
 def image(texture):
     return texture.to_image()
+
+
+class ArrayLikeWrapper:
+    """A class that implements the NumPy array protocol but isn't isinstance(np.ndarray)"""
+    def __init__(self, arr: np.ndarray):
+        self._arr = arr
+
+    def __getattr__(self, item):
+        return getattr(self.__getattribute__('_arr'), item)
+
+
+@fixture()
+def array_protocol_implementer() -> Callable[[np.ndarray], Any]:
+    return ArrayLikeWrapper
 
 
 def pytest_addoption(parser):

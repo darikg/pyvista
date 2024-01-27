@@ -155,6 +155,12 @@ def test_init_as_points_from_list():
     assert np.allclose(mesh.points, points)
 
 
+def test_init_with_numpy_arraylike_points(array_protocol_implementer):
+    points = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    mesh = pv.PolyData(array_protocol_implementer(np.array(points)))
+    assert np.allclose(mesh.points, points)
+
+
 def test_invalid_init():
     with pytest.raises(ValueError):
         pv.PolyData(np.array([1.0]))
