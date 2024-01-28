@@ -1,7 +1,7 @@
 from math import pi
 import os
 import pathlib
-from typing import Dict, List
+from typing import Dict, List, Optional
 import warnings
 
 import numpy as np
@@ -60,18 +60,35 @@ def test_init_from_pdata(sphere):
     assert not np.allclose(sphere.points[0], mesh.points[0])
 
 
-@pytest.mark.parametrize('faces_is_cell_array', (False, True))
-def test_init_from_arrays(faces_is_cell_array):
+def cell_array_fixture(name: str, expected_name: str, orig_cells):
+    vals = [
+        (val, orig_cells)
+        for val in [
+            orig_cells,
+            np.array(orig_cells),
+            np.array(orig_cells).astype(np.int8),
+            pv.CellArray(orig_cells),
+        ]
+    ]
+    test_names = ['list', 'array', 'array_int8', 'CellArray']
+
+    def wrapper(test_fn):
+        return pytest.mark.parametrize(
+            (name, expected_name), vals, ids=test_names
+        )(test_fn)
+
+    return wrapper
+
+
+@cell_array_fixture('faces', 'expected', [4, 0, 1, 2, 3, 3, 0, 1, 4, 3, 1, 2, 3])
+def test_init_from_arrays(faces, expected):
     vertices = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0.5, 0.5, -1]])
-
-    # mesh faces
-    faces = np.hstack([[4, 0, 1, 2, 3], [3, 0, 1, 4], [3, 1, 2, 4]]).astype(np.int8)
-
-    mesh = pv.PolyData(vertices, pv.CellArray(faces) if faces_is_cell_array else faces)
+    mesh = pv.PolyData(vertices, faces)
     assert mesh.n_points == 5
     assert mesh.n_cells == 3
+    assert np.array_equal(mesh.faces, expected)
 
-    mesh = pv.PolyData(vertices, pv.CellArray(faces) if faces_is_cell_array else faces, deep=True)
+    mesh = pv.PolyData(vertices, faces, deep=True)
     vertices[0] += 1
     assert not np.allclose(vertices[0], mesh.points[0])
 
@@ -85,42 +102,27 @@ def test_init_from_arrays(faces_is_cell_array):
 
     # attribute is mutable
     faces = [4, 0, 1, 2, 3]
-    mesh.faces = pv.CellArray(faces) if faces_is_cell_array else faces
+    mesh.faces = faces
     assert np.allclose(faces, mesh.faces)
 
 
-@pytest.mark.parametrize('faces_is_cell_array', (False, True))
-def test_init_from_arrays_with_vert(faces_is_cell_array):
+@cell_array_fixture('faces', 'expected_faces', [4, 0, 1, 2, 3, 3, 0, 1, 4, 3, 1, 2, 4, 1, 5])
+def test_init_from_arrays_with_vert(faces, expected_faces):
     vertices = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0.5, 0.5, -1], [0, 1.5, 1.5]])
-
-    # mesh faces
-    faces = np.hstack(
-        [[4, 0, 1, 2, 3], [3, 0, 1, 4], [3, 1, 2, 4], [1, 5]]  # [quad, triangle, triangle, vertex]
-    ).astype(np.int8)
-    if faces_is_cell_array:
-        faces = pv.CellArray(faces)
-
     mesh = pv.PolyData(vertices, faces)
     assert mesh.n_points == 6
     assert mesh.n_cells == 4
+    assert np.array_equal(mesh.faces, expected_faces)
 
 
-@pytest.mark.parametrize('faces_is_cell_array', (False, True))
-def test_init_from_arrays_triangular(faces_is_cell_array):
+@cell_array_fixture('faces', 'expected_faces', np.vstack([[3, 0, 1, 2], [3, 0, 1, 4], [3, 1, 2, 4]]))
+@pytest.mark.parametrize('deep', (False, True))
+def test_init_from_arrays_triangular(faces, expected_faces, deep):
     vertices = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0.5, 0.5, -1]])
-
-    # mesh faces
-    faces = np.vstack([[3, 0, 1, 2], [3, 0, 1, 4], [3, 1, 2, 4]])
-    if faces_is_cell_array:
-        faces = pv.CellArray(faces)
-
-    mesh = pv.PolyData(vertices, faces)
+    mesh = pv.PolyData(vertices, faces, deep=deep)
     assert mesh.n_points == 5
     assert mesh.n_cells == 3
-
-    mesh = pv.PolyData(vertices, faces, deep=True)
-    assert mesh.n_points == 5
-    assert mesh.n_cells == 3
+    assert np.array_equal(mesh.faces, expected_faces)
 
 
 def test_init_as_points():
@@ -204,13 +206,12 @@ def test_invalid_connectivity_arrays(arr, value):
         _ = pv.PolyData(points, **{arr: value})
 
 
-@pytest.mark.parametrize('lines_is_cell_array', (False, True))
-def test_lines_on_init(lines_is_cell_array):
+@cell_array_fixture('lines', 'expected_lines', [2, 0, 1, 3, 2, 3, 4])
+def test_lines_on_init(lines, expected_lines):
     points = np.random.default_rng().random((5, 3))
-    lines = [2, 0, 1, 3, 2, 3, 4]
-    pd = pv.PolyData(points, lines=pv.CellArray(lines) if lines_is_cell_array else lines)
+    pd = pv.PolyData(points, lines=lines)
     assert not pd.faces.size
-    assert np.array_equal(pd.lines, lines)
+    assert np.array_equal(pd.lines, expected_lines)
     assert np.array_equal(pd.points, points)
 
 
