@@ -32,6 +32,7 @@ from .errors import (
     VTKVersionError,
 )
 from .filters import PolyDataFilters, StructuredGridFilters, UnstructuredGridFilters, _get_output
+from .input_validation import validate_arrayNx3
 from .utilities.cells import create_mixed_cells, get_mixed_cells, numpy_to_idarr
 from .utilities.fileio import get_ext
 from .utilities.misc import abstract_class
@@ -734,22 +735,26 @@ class PolyData(_vtk.vtkPolyData, _PointSet, PolyDataFilters):
             return
 
         # First parameter is points
-        if isinstance(var_inp, (np.ndarray, list, _vtk.vtkDataArray)):
+        if isinstance(var_inp, _vtk.vtkDataArray):
             self.SetPoints(vtk_points(var_inp, deep=deep, force_float=force_float))
-
         else:
-            msg = f"""
-                Invalid Input type:
-
-                Expected first argument to be either a:
-                - vtk.PolyData
-                - pyvista.PolyData
-                - numeric numpy.ndarray (1 or 2 dimensions)
-                - List (flat or nested with 3 points per vertex)
-                - vtk.vtkDataArray
-
-                Instead got: {type(var_inp)}"""
-            raise TypeError(dedent(msg.strip('\n')))
+            try:
+                points = validate_arrayNx3(var_inp, reshape=True, name="points")
+            except TypeError as err:
+                msg = f"""
+                    Invalid Input type:
+    
+                    Expected first argument to be either a:
+                    - vtk.PolyData
+                    - pyvista.PolyData
+                    - numeric numpy.ndarray (1 or 2 dimensions)
+                        (or an object implementing the numpy array protocol)
+                    - List (flat or nested with 3 points per vertex)
+                    - vtk.vtkDataArray
+    
+                    Instead got: {type(var_inp)}"""
+                raise TypeError(dedent(msg.strip('\n'))) from err
+            self.SetPoints(vtk_points(points, deep=deep, force_float=force_float))
 
         # At this point, points have been setup, add faces and/or lines
         if faces is lines is strips is verts is None:

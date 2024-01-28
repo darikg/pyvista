@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import pyvista as pv
+from array_protocol_implementer import ArrayLikeWrapper
 from pyvista import examples
 from pyvista.core.errors import CellSizeError, NotAllTrianglesError, PyVistaFutureWarning
 
@@ -68,11 +69,12 @@ def parametrize_cells_type(name: str, expected_name: str, orig_cells):
             np.array(orig_cells),
             np.array(orig_cells).astype(np.int8),
             pv.CellArray(orig_cells),
+            ArrayLikeWrapper(orig_cells)
         ]
     ]
     test_names = [
         f'name={typ}'
-        for typ in ('list', 'array', 'array_int8', 'CellArray')
+        for typ in ('list', 'array', 'array_int8', 'CellArray', 'ArrayLikeWrapper')
     ]
 
     def wrapper(test_fn):
@@ -158,6 +160,15 @@ def test_init_as_points_from_list():
     points = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     mesh = pv.PolyData(points)
     assert np.allclose(mesh.points, points)
+
+
+def test_numpy_arraylike_points():
+    points = np.array([[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    mesh = pv.PolyData(ArrayLikeWrapper(points))
+    assert np.allclose(mesh.points, points)
+
+    mesh.points = ArrayLikeWrapper(2 * points)
+    assert np.allclose(mesh.points, 2 * points)
 
 
 def test_invalid_init():
