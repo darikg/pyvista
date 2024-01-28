@@ -31,6 +31,7 @@ from .dataobject import DataObject
 from .datasetattributes import DataSetAttributes
 from .errors import PyVistaDeprecationWarning, VTKVersionError
 from .filters import DataSetFilters, _get_output
+from .input_validation import validate_arrayNx3
 from .pyvista_ndarray import pyvista_ndarray
 from .utilities import transformations
 from .utilities.arrays import (
@@ -520,7 +521,7 @@ class DataSet(DataSetFilters, DataObject):
             self.Modified()
             return
         # otherwise, wrap and use the array
-        points, _ = _coerce_pointslike_arg(points, copy=False)
+        points = validate_arrayNx3(points, reshape=True, name='points')
         vtkpts = vtk_points(points, False)
         if not pdata:
             self.SetPoints(vtkpts)

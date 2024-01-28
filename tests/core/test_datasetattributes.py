@@ -11,6 +11,7 @@ import pytest
 from pytest import fixture, mark, raises
 
 import pyvista as pv
+from array_protocol_implementer import ArrayLikeWrapper
 from pyvista.core.errors import PyVistaDeprecationWarning
 from pyvista.core.utilities.arrays import FieldAssociation, convert_array
 
@@ -661,3 +662,9 @@ def test_active_t_coords_name_deprecated():
         mesh.point_data.active_t_coords_name = name
         if pv._version.version_info >= (0, 46):
             raise RuntimeError('Remove this deprecated property')
+
+
+def test_array_protocol_implementer(plane):
+    data = np.random.default_rng().random(plane.n_points)
+    plane.point_data['array_like'] = ArrayLikeWrapper(data)
+    assert np.array_equal(data, plane.point_data['array_like'])
