@@ -11,7 +11,7 @@ import pytest
 from pytest import fixture, mark, raises
 
 import pyvista as pv
-from array_protocol_implementer import ArrayLikeWrapper
+from pyvista_test_utils import ArrayLikeWrapper
 from pyvista.core.errors import PyVistaDeprecationWarning
 from pyvista.core.utilities.arrays import FieldAssociation, convert_array
 

@@ -1,14 +1,14 @@
-from math import pi
 import os
 import pathlib
-from typing import Dict, List, Optional
 import warnings
+from math import pi
+from typing import Dict, List
 
 import numpy as np
 import pytest
 
 import pyvista as pv
-from array_protocol_implementer import ArrayLikeWrapper
+from pyvista_test_utils import ArrayLikeWrapper, ParametrizedMappings
 from pyvista import examples
 from pyvista.core.errors import CellSizeError, NotAllTrianglesError, PyVistaFutureWarning
 
@@ -61,28 +61,13 @@ def test_init_from_pdata(sphere):
     assert not np.allclose(sphere.points[0], mesh.points[0])
 
 
-def parametrize_cells_type(name: str, expected_name: str, orig_cells):
-    vals = [
-        (val, orig_cells)
-        for val in [
-            orig_cells,
-            np.array(orig_cells),
-            np.array(orig_cells).astype(np.int8),
-            pv.CellArray(orig_cells),
-            ArrayLikeWrapper(orig_cells)
-        ]
-    ]
-    test_names = [
-        f'name={typ}'
-        for typ in ('list', 'array', 'array_int8', 'CellArray', 'ArrayLikeWrapper')
-    ]
-
-    def wrapper(test_fn):
-        return pytest.mark.parametrize(
-            (name, expected_name), vals, ids=test_names
-        )(test_fn)
-
-    return wrapper
+parametrize_cells_type = ParametrizedMappings(dict(
+    list=lambda x: x,
+    ndarray=np.array,
+    ndarray_int8=lambda x: np.array(x).astype(np.int8),
+    CellArray=pv.CellArray,
+    ArrayLikeWrapper=ArrayLikeWrapper
+))
 
 
 @parametrize_cells_type('faces', 'expected_faces', [4, 0, 1, 2, 3, 3, 0, 1, 4, 3, 1, 2, 3])
@@ -120,7 +105,10 @@ def test_init_from_arrays_with_vert(faces, expected_faces):
     assert np.array_equal(mesh.faces, expected_faces)
 
 
-@parametrize_cells_type('faces', 'expected_faces', np.vstack([[3, 0, 1, 2], [3, 0, 1, 4], [3, 1, 2, 4]]))
+@parametrize_cells_type(
+    'faces', 'expected_faces', [[3, 0, 1, 2], [3, 0, 1, 4], [3, 1, 2, 4]],
+    expected_mapping=np.hstack,
+)
 @pytest.mark.parametrize('deep', (False, True))
 def test_init_from_arrays_triangular(faces, expected_faces, deep):
     vertices = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0.5, 0.5, -1]])

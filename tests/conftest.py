@@ -10,10 +10,6 @@ from pyvista import examples
 
 pyvista.OFF_SCREEN = True
 
-# Make the `ArrayLikeWrapper` class defined in
-# `array_protocol_implementer.py` available for tests to us
-pytest_plugins = ('array_protocol_implementer',)
-
 
 @fixture()
 def global_variables_reset():
