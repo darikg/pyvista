@@ -62,11 +62,11 @@ def test_init_from_pdata(sphere):
 
 
 parametrize_cells_type = ParametrizedMappings(dict(
-    list=lambda x: x,
+    list=list,
     ndarray=np.array,
     ndarray_int8=lambda x: np.array(x).astype(np.int8),
     CellArray=pv.CellArray,
-    ArrayLikeWrapper=ArrayLikeWrapper
+    ArrayLikeWrapper=ArrayLikeWrapper,
 ))
 
 

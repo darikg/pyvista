@@ -11,24 +11,29 @@ class ParametrizedMappings(Generic[T]):
 
     e.g. given the function
 
-        def convert_to_int(x: int | str | float) -> int:
+        from decimal import Decimal
+
+        def convert_to_int(x: str | float | Decimal) -> int:
             return int(x)
 
     instead of the test
 
         @pytest.mark.parametrize(
             ('val', 'expected'),
-            [(3, 3), ('3', 3), (3.0, 3)],
+            [('3', 3), (3.0, 3), (Decimal(3), 3)],
         )
         def test_convert_to_int(val, expected):
-            assert convert_to_int(input_va
+            assert convert_to_int(val) == expected
 
     write
 
-        @ParametrizedMapping(dict(int_val=int, str_val=str))(
-            'val', 'expected',
+        parametrize_number_types = ParametrizedMappings(
+            dict(string=str, float=float, decimal=Decimal)
+        )
 
-
+        @paremetrize_number_types('val', 'expected', 3)
+        def test_convert_to_int(val, expected):
+            assert convert_to_int(val) == expected
     """
     def __init__(
             self,
