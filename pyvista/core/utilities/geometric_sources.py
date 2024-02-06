@@ -565,7 +565,13 @@ class MultipleLinesSource(_vtk.vtkLineSource):
         points : array_like[float]
             List of points defining a broken line.
         """
-        points = validate_arrayNx3(points, name='points', must_be_real=True, must_have_shape=(-1, 3), must_have_min_length=2)
+        points = validate_arrayNx3(
+            points,
+            name='points',
+            must_be_real=True,
+            must_have_shape=(-1, 3),
+            must_have_min_length=2,
+        )
         self.SetPoints(pyvista.vtk_points(points))
 
     @property
