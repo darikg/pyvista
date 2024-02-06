@@ -14,8 +14,8 @@ import pyvista
 from pyvista.core import _vtk_core as _vtk
 from pyvista.core._typing_core import BoundsLike, Matrix, Vector
 from pyvista.core.utilities.misc import _check_range, _reciprocal, no_new_attr
+from pyvista.core.validation import validate_arrayNx3
 
-from .arrays import _coerce_pointslike_arg
 from .helpers import wrap
 
 
@@ -565,9 +565,7 @@ class MultipleLinesSource(_vtk.vtkLineSource):
         points : array_like[float]
             List of points defining a broken line.
         """
-        points, _ = _coerce_pointslike_arg(points)
-        if not (len(points) >= 2):
-            raise ValueError('>=2 points need to define multiple lines.')
+        points = validate_arrayNx3(points, name='points', must_be_real=True, must_have_shape=(-1, 3), must_have_min_length=2)
         self.SetPoints(pyvista.vtk_points(points))
 
     @property

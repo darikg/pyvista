@@ -1,3 +1,4 @@
+import re
 from collections import namedtuple
 import itertools
 from re import escape
@@ -49,7 +50,11 @@ from pyvista.core.validation import (
 )
 from pyvista.core.validation._cast_array import _cast_to_list, _cast_to_numpy, _cast_to_tuple
 from pyvista.core.validation.check import _validate_shape_value
-from pyvista.core.validation.validate import _array_from_vtkmatrix, _set_default_kwarg_mandatory
+from pyvista.core.validation.validate import (
+    _array_from_vtkmatrix,
+    _set_default_kwarg_mandatory,
+    _validate_3d_point_or_points,
+)
 
 
 @pytest.mark.parametrize(
@@ -1046,3 +1051,58 @@ def test_array_from_vtkmatrix(cls, shape):
     # Test this matches public function
     expected = array_from_vtkmatrix(mat)
     assert np.array_equal(actual, expected)
+
+
+@pytest.mark.parametrize(
+    ('point', 'expected_singular'),
+    [
+        ([1.0, 2.0, 3.0], True),
+        (np.array([1.0, 2.0, 3.0]), True),
+        (np.array([[1.0, 2.0, 3.0]]), False),
+    ],
+)
+def test_validate_3d_point(point, expected_singular):
+    coerced_arg, singular = _validate_3d_point_or_points(point, name='point')
+    assert isinstance(coerced_arg, np.ndarray)
+    assert coerced_arg.shape == (1, 3)
+    assert np.array_equal(coerced_arg, np.array([[1.0, 2.0, 3.0]]))
+    assert singular == expected_singular
+
+
+@pytest.mark.parametrize(
+    'points',
+    [
+        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+        np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+    ],
+)
+def test_validate_3d_points(points):
+    coerced_arg, singular = _validate_3d_point_or_points(points, name='points')
+    assert isinstance(coerced_arg, np.ndarray)
+    assert coerced_arg.shape == (2, 3)
+    assert np.array_equal(coerced_arg, np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]))
+    assert not singular
+
+
+def test_validate_3d_point_or_points_errors():
+    # wrong type
+    msg = "Array must have real numbers. Got dtype <class 'numpy.object_'>"
+    with pytest.raises(TypeError, match=msg):
+        # allow Sequence but not Iterable
+        _validate_3d_point_or_points({1, 2, 3}, name='point')
+
+    # wrong length sequence
+    shape_msg = 'point has shape ({shape}) which is not allowed. Shape must be one of [3, (-1, 3)]'
+    with pytest.raises(ValueError, match=re.escape(shape_msg.format(shape='2,'))):
+        _validate_3d_point_or_points([1, 2], name='point')
+
+    # wrong length ndarray
+    with pytest.raises(ValueError, match=re.escape(shape_msg.format(shape='4,'))):
+        _validate_3d_point_or_points(np.empty(4), name='point')
+
+    with pytest.raises(ValueError, match=re.escape(shape_msg.format(shape='2, 4'))):
+        _validate_3d_point_or_points(np.empty([2, 4]), name='point')
+
+    # wrong ndim ndarray
+    with pytest.raises(ValueError, match=re.escape(shape_msg.format(shape='1, 3, 3'))):
+        _validate_3d_point_or_points(np.empty([1, 3, 3]), name='point')

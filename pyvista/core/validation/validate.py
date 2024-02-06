@@ -1030,6 +1030,29 @@ def validate_array3(arr, /, *, reshape=True, broadcast=False, **kwargs):
     return validate_array(arr, **kwargs)
 
 
+def _validate_3d_point_or_points(points, /, *, name: str) -> Tuple[np.ndarray, bool]:
+    """Check and coerce arg to (n, 3) np.ndarray.
+
+    Parameters
+    ----------
+    points : Matrix, Vector
+        Argument to coerce into (n, 3) :class:`numpy.ndarray`.
+
+    Returns
+    -------
+    numpy.ndarray
+        Size ``(n, 3)`` array.
+    bool
+        Whether the input was a single point in an array-like with shape ``(3,)``.
+
+    """
+    # Convert to ndarray first without reshaping to check original dims
+    points = _cast_to_numpy(points, must_be_real=True)
+    singular = points.ndim == 1
+    points = validate_arrayNx3(points, name=name, reshape=True)
+    return points, singular
+
+
 def _set_default_kwarg_mandatory(kwargs: dict, key: str, default: Any):
     """Set a kwarg and raise ValueError if not set to its default value."""
     val = kwargs.pop(key, default)

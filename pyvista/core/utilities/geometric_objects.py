@@ -25,7 +25,7 @@ import numpy as np
 import pyvista
 from pyvista.core import _vtk_core as _vtk
 
-from .arrays import _coerce_pointslike_arg
+from ..validation import validate_arrayNx3
 from .geometric_sources import (
     ConeSource,
     CubeSource,
@@ -1817,10 +1817,8 @@ def Rectangle(points=None):
     """
     if points is None:
         points = [[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
-    if len(points) != 3:
-        raise TypeError('Points must be given as length 3 np.ndarray or list')
 
-    points, _ = _coerce_pointslike_arg(points)
+    points = validate_arrayNx3(points, name='points', must_be_real=True, must_have_shape=(3, 3))
 
     point_0 = points[0]
     point_1 = points[1]
@@ -1884,10 +1882,8 @@ def Quadrilateral(points=None):
     """
     if points is None:
         points = [[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]]
-    if len(points) != 4:
-        raise TypeError('Points must be given as length 4 np.ndarray or list')
 
-    points, _ = _coerce_pointslike_arg(points)
+    points = validate_arrayNx3(points, name='points', must_be_real=True, must_have_shape=(4, 3))
 
     cells = np.array([[4, 0, 1, 2, 3]])
     return wrap(pyvista.PolyData(points, cells))
