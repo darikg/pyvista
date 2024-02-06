@@ -35,7 +35,6 @@ from .pyvista_ndarray import pyvista_ndarray
 from .utilities import transformations
 from .utilities.arrays import (
     FieldAssociation,
-    _coerce_pointslike_arg,
     get_array,
     get_array_association,
     raise_not_matching,
@@ -44,6 +43,7 @@ from .utilities.arrays import (
 from .utilities.helpers import is_pyvista_dataset
 from .utilities.misc import abstract_class, check_valid_vector
 from .utilities.points import vtk_points
+from .validation.validate import _validate_3d_point_or_points
 
 # vector array names
 DEFAULT_VECTOR_KEY = '_vectors'
@@ -520,7 +520,7 @@ class DataSet(DataSetFilters, DataObject):
             self.Modified()
             return
         # otherwise, wrap and use the array
-        points, _ = _coerce_pointslike_arg(points, copy=False)
+        # TODO do the validation here or in vtk_points
         vtkpts = vtk_points(points, False)
         if not pdata:
             self.SetPoints(vtkpts)
@@ -2438,7 +2438,7 @@ class DataSet(DataSetFilters, DataObject):
         array([1., 1., 0.])
 
         """
-        point, singular = _coerce_pointslike_arg(point, copy=False)
+        point, singular = _validate_3d_point_or_points(point, name='point')
 
         locator = _vtk.vtkCellLocator()
         locator.SetDataSet(self)
@@ -2522,7 +2522,7 @@ class DataSet(DataSetFilters, DataObject):
         (1000,)
 
         """
-        point, singular = _coerce_pointslike_arg(point, copy=False)
+        point, singular = _validate_3d_point_or_points(point, name='point')
 
         locator = _vtk.vtkCellLocator()
         locator.SetDataSet(self)
@@ -3304,7 +3304,7 @@ class DataSet(DataSetFilters, DataObject):
         if not 0 <= ind < self.n_cells:
             raise ValueError(f"ind must be >= 0 and < {self.n_cells}, got {ind}")
 
-        co_point, singular = _coerce_pointslike_arg(point, copy=False)
+        co_point, singular = _validate_3d_point_or_points(point, name='point')
 
         cell = self.GetCell(ind)
         npoints = cell.GetPoints().GetNumberOfPoints()

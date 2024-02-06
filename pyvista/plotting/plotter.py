@@ -27,7 +27,6 @@ from pyvista.core._typing_core import BoundsLike
 from pyvista.core.errors import MissingDataError, PyVistaDeprecationWarning
 from pyvista.core.utilities.arrays import (
     FieldAssociation,
-    _coerce_pointslike_arg,
     convert_array,
     get_array,
     get_array_association,
@@ -35,6 +34,7 @@ from pyvista.core.utilities.arrays import (
 )
 from pyvista.core.utilities.helpers import is_pyvista_dataset, wrap
 from pyvista.core.utilities.misc import abstract_class, assert_empty_kwargs
+from pyvista.core.validation import validate_arrayNx3
 
 from . import _vtk
 from ._plotting import (
@@ -5621,7 +5621,9 @@ class BasePlotter(PickingHelper, WidgetHelper):
 
         """
         if not is_pyvista_dataset(points):
-            points, _ = _coerce_pointslike_arg(points, copy=False)
+            # TODO do the validation in add_point_labels?
+            points = validate_arrayNx3(points, name='points', must_be_real=True)
+
         if not isinstance(labels, (str, list)):
             raise TypeError(
                 'labels must be a string name of the scalars array to use or list of scalars'
