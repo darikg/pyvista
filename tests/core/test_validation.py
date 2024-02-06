@@ -1,6 +1,6 @@
-import re
 from collections import namedtuple
 import itertools
+import re
 from re import escape
 import sys
 from typing import Union, get_args, get_origin
