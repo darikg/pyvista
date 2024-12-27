@@ -3,7 +3,6 @@ import collections.abc
 from typing import Literal, Optional, Sequence, Union
 import warnings
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 import pyvista
@@ -4424,6 +4423,8 @@ class DataSetFilters:
         See the :ref:`plot_over_line_example` example.
 
         """
+        import matplotlib.pyplot as
+        
         # Sample on line
         sampled = DataSetFilters.sample_over_line(
             self, pointa, pointb, resolution, tolerance, progress_bar=progress_bar
@@ -4755,6 +4756,8 @@ class DataSetFilters:
         ... )  # doctest:+SKIP
 
         """
+        import matplotlib.pyplot as plt
+
         # Sample on circular arc
         sampled = DataSetFilters.sample_over_circular_arc(
             self, pointa, pointb, center, resolution, tolerance, progress_bar=progress_bar
