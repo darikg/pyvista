@@ -9,6 +9,8 @@ from typing import Any
 from typing import Literal
 from typing import cast
 from typing import overload
+from typing import Protocol
+from typing import TypeVar
 
 import numpy as np
 
@@ -43,6 +45,40 @@ if TYPE_CHECKING:  # pragma: no cover
     from pyvista.core._typing_core._dataset_types import ConcreteDataSetAlias
 
     from ..wrappers import _WrappableVTKDataObjectType
+
+
+TWrapped = TypeVar('TWrapped', bound=pyvista.DataObject)
+TWrapped.__doc__ = "Type variable for the `PyvistaWrappable` protocol specifying the wrapped pyvista type"
+
+
+class PyvistaWrappable(Protocol[TWrapped]):
+    """A protocol for opting in to pyvista wrapping.
+
+    This allows mesh-like classes in downstream packages to easily support integration into
+    the pyvista ecosystem by implementing the `__pyvista__` method that should return a `pyvista.DataObject`.
+
+    Examples
+    --------
+    A custom mesh class implementing the PyvistaWrappable protocol:
+
+    >>> import numpy as np
+    >>> import pyvista as pv
+    >>>
+    >>> class MyMesh:
+    >>>     def __init__(self, points: np.ndarray, faces: np.ndarray)
+    >>>         self.points = points
+    >>>         self.faces = faces
+    >>>
+    >>>     def __pyvista__(self) -> pv.PolyData:
+    >>>         return pyvista.PolyData.from_regular_faces(self.points, self.faces)
+    >>>
+    >>> mesh = MyMesh(points=np.random.uniform(-1, 1, (3, 3)), faces=np.array([[0, 1, 2]]))
+    >>> plotter = pyvista.Plotter()
+    >>> plotter.add_mesh(mesh)
+    >>> plotter.show()
+
+    """
+    def __pyvista__(self) -> TWrapped: ...
 
 
 # vtkDataSet overloads
@@ -98,6 +134,11 @@ def wrap(dataset: Trimesh) -> PolyData: ...
 # TODO: Support meshio overload
 # @overload
 # def wrap(dataset: Mesh) -> UnstructuredGrid: ...
+
+@overload
+def wrap(dataset: PyvistaWrappable[TWrapped]) -> TWrapped: ...
+
+
 def wrap(
     dataset: _WrappableVTKDataObjectType
     | DataObject
@@ -105,6 +146,7 @@ def wrap(
     | Mesh
     | _vtk.vtkAbstractArray
     | NumpyArray[float]
+    | PyvistaWrappable
     | None,
 ) -> DataObject | pyvista_ndarray | None:
     """Wrap any given VTK data object to its appropriate PyVista data object.
@@ -223,6 +265,10 @@ def wrap(
     # wrap VTK arrays as pyvista_ndarray
     if isinstance(dataset, _vtk.vtkDataArray):
         return pyvista.pyvista_ndarray(dataset)
+
+    # Check if the class implements PyvistaWrappable
+    if hasattr(dataset, '__pyvista__'):
+        return dataset.__pyvista__()
 
     # Check if a dataset is a VTK type
     if hasattr(dataset, 'GetClassName'):
